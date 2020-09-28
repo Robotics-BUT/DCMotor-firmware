@@ -131,13 +131,12 @@ impl ADC {
                 _ => {}
             }
             self.channel_index += 1;
-            // process sample
-            if adc.isr.read().eoseq().bit_is_set() {
-                self.channel_index = 0;
-                adc.isr.modify(|_, w| w.eoseq().clear());
-            }
-            adc.isr.modify(|_, w| w.eoc().clear());
         }
+        if adc.isr.read().eoseq().bit_is_set() {
+            self.channel_index = 0;
+            adc.isr.modify(|_, w| w.eoseq().clear());
+        }
+        adc.isr.modify(|_, w| w.eoc().clear());
     }
 
     // FIXME extract constants
