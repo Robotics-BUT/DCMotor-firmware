@@ -1,6 +1,6 @@
 #![no_std]
 
-mod adc;
+pub mod adc;
 pub mod board;
 pub mod can;
 mod consts;

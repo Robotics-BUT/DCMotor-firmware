@@ -7,9 +7,11 @@ use stm32f0xx_hal::delay::Delay;
 use stm32f0xx_hal::timers::{Event, Timer};
 use stm32f0xx_hal::{prelude::*, stm32};
 
+use dcdriver::adc::ADC;
 use dcdriver::board::*;
 use dcdriver::can::CANBus;
 use dcdriver::encoder::Encoder;
+use stm32f0xx_hal::pac::Interrupt::ADC_COMP;
 
 const CONTROL_LOOP_PERIOD_HZ: u32 = 10;
 
@@ -20,6 +22,7 @@ const APP: () = {
         delay: Delay,
         can: CANBus,
         encoder: Encoder,
+        adc: ADC,
         control_timer: Timer<ControlTimer>,
         #[init(0)]
         last_position: u16,
@@ -90,37 +93,27 @@ const APP: () = {
         // pwm2p.set_low();
         // pwm2n.set_high();
         //
-        pwm1p.set_low();
-        pwm1n.set_high();
-        pwm2p.set_high();
-        pwm2n.set_low();
+        // pwm1p.set_low();
+        // pwm1n.set_high();
+        // pwm2p.set_high();
+        // pwm2n.set_low();
 
-        // let mut adc = Adc::new(device.ADC, &mut rcc);
-        //
-        // loop {
-        //     // defmt::debug!(
-        //     //     "V: {:f32}",
-        //     //     (adc.read_abs_mv(&mut input_voltage_pin) * 5) as f32 / 100.0f32
-        //     // );
-        //     defmt::debug!(
-        //         "I: {:f32}",
-        //         ((adc.read_abs_mv(&mut current_pin) as i16) - 635) as f32 / 50.0f32
-        //     );
-        //     delay.delay_ms(200u32);
-        // }
-        //
-        // defmt::info!("Init complete, moving to idle.");
+        let adc = ADC::new(device.ADC);
+        adc.start_periodic_reading();
+
+        defmt::info!("Init complete, moving to idle.");
         init::LateResources {
             led,
             delay,
             can,
             encoder,
+            adc,
             control_timer: timer,
         }
     }
 
-    #[idle(resources = [led, delay])]
-    fn main(cx: main::Context) -> ! {
+    #[idle(resources = [led, delay, adc])]
+    fn main(mut cx: main::Context) -> ! {
         loop {
             cx.resources
                 .led
@@ -129,6 +122,12 @@ const APP: () = {
             cx.resources.delay.delay_ms(100u32);
             cx.resources.led.set_low().expect("Failed to set LED low.");
             cx.resources.delay.delay_ms(100u32);
+            cx.resources
+                .adc
+                .lock(|adc| defmt::debug!("V {:f32}", adc.get_system_voltage()));
+            cx.resources
+                .adc
+                .lock(|adc| defmt::debug!("I {:f32}", adc.get_motor_current()));
         }
     }
 
@@ -144,7 +143,12 @@ const APP: () = {
             defmt::error!("Timer wait errored unexpectedly.");
         }; // FIXME add method to timer to clear interrupt, without the need to call wait.
 
-        defmt::debug!("speed: {:f32}", cx.resources.encoder.get_speed());
+        // defmt::debug!("speed: {:f32}", cx.resources.encoder.get_speed());
         // read_adc(cx.resources.adc, 4);
+    }
+
+    #[task(binds = ADC_COMP, resources = [adc])]
+    fn adc_conversion_complete(cx: adc_conversion_complete::Context) {
+        cx.resources.adc.interrupt();
     }
 };
