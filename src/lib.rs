@@ -1,5 +1,11 @@
 #![no_std]
 
+mod adc;
+pub mod board;
+pub mod can;
+mod consts;
+pub mod encoder;
+
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use defmt_rtt as _; // global logger
