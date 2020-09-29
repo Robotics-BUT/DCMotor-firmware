@@ -7,6 +7,7 @@ const VTEMPCAL30: *const u16 = 0x1FFF_F7B8 as *const u16;
 const VTEMPCAL110: *const u16 = 0x1FFF_F7C2 as *const u16;
 const VDD_CALIB: u16 = 3300;
 
+// TODO maybe enable triggering from TIM1
 pub struct ADC {
     adc: stm32::ADC,
     channel_index: u8,

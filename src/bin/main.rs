@@ -36,6 +36,9 @@ const APP: () = {
         let mut device: stm32f0xx_hal::stm32::Peripherals = cx.device;
 
         let raw_rcc = device.RCC;
+        raw_rcc.apb2enr.modify(|_, w| w.tim1en().enabled());
+        raw_rcc.apb2rstr.modify(|_, w| w.tim1rst().reset());
+        raw_rcc.apb2rstr.modify(|_, w| w.tim1rst().clear_bit());
 
         // todo perform manipulation of RCC register values for custom peripherals
         let mut rcc = raw_rcc
@@ -54,8 +57,8 @@ const APP: () = {
                 (
                     gpioa.pa11.into_alternate_af4(cs),
                     gpioa.pa12.into_alternate_af4(cs),
-                    gpioa.pa8.into_push_pull_output(cs),
-                    gpioa.pa9.into_push_pull_output(cs),
+                    gpioa.pa8.into_alternate_af2(cs),
+                    gpioa.pa9.into_alternate_af2(cs),
                     gpioa.pa5.into_analog(cs),
                     gpioa.pa6.into_analog(cs),
                 )
@@ -68,8 +71,8 @@ const APP: () = {
                     gpiob.pb5.into_alternate_af1(cs),
                     gpiob.pb0.into_alternate_af1(cs),
                     gpiob.pb2.into_push_pull_output(cs),
-                    gpiob.pb13.into_push_pull_output(cs),
-                    gpiob.pb14.into_push_pull_output(cs),
+                    gpiob.pb13.into_alternate_af2(cs),
+                    gpiob.pb14.into_alternate_af2(cs),
                 )
             });
 
@@ -88,15 +91,21 @@ const APP: () = {
         let mut timer = Timer::tim2(device.TIM2, CONTROL_LOOP_PERIOD_HZ.hz(), &mut rcc);
         timer.listen(Event::TimeOut);
 
-        // pwm1p.set_high();
-        // pwm1n.set_low();
-        // pwm2p.set_low();
-        // pwm2n.set_high();
-        //
-        // pwm1p.set_low();
-        // pwm1n.set_high();
-        // pwm2p.set_high();
-        // pwm2n.set_low();
+        // set up motor control pwm
+        let tim1 = device.TIM1;
+        tim1.cr1.modify(|_, w| {
+            w.ckd()
+                .div1() // clock deadtime the same as timer
+                .arpe()
+                .enabled() // buffer ARR
+                .cms()
+                .center_aligned2() // center aligned mode 2 - interrupt flags set only when counting up
+                .urs()
+                .counter_only() // only counter events overflow, underflow generate interrupt
+        });
+
+        tim1.psc.write(|w| w.psc().bits(0));
+        tim1.rcr.write
 
         let adc = ADC::new(device.ADC);
         adc.start_periodic_reading();
