@@ -9,12 +9,13 @@ use stm32f0xx_hal::{prelude::*, stm32};
 
 use dcdriver::adc::ADC;
 use dcdriver::board::*;
+use dcdriver::bridge::Bridge;
 use dcdriver::can::CANBus;
 use dcdriver::encoder::Encoder;
 use stm32f0xx_hal::pac::Interrupt::{ADC_COMP, TIM1_BRK_UP_TRG_COM};
 use stm32f0xx_hal::time::Hertz;
 
-const CONTROL_LOOP_PERIOD_HZ: u32 = 10;
+const CONTROL_LOOP_PERIOD_HZ: u32 = 50;
 
 #[rtic::app(device = stm32f0xx_hal::stm32, peripherals = true)]
 const APP: () = {
@@ -25,9 +26,9 @@ const APP: () = {
         encoder: Encoder,
         adc: ADC,
         control_timer: Timer<ControlTimer>,
+        bridge: Bridge,
         #[init(0)]
         last_position: u16,
-        tim1: stm32::TIM1,
     }
 
     #[init]
@@ -38,9 +39,6 @@ const APP: () = {
         let mut device: stm32f0xx_hal::stm32::Peripherals = cx.device;
 
         let raw_rcc = device.RCC;
-        raw_rcc.apb2enr.modify(|_, w| w.tim1en().enabled());
-        raw_rcc.apb2rstr.modify(|_, w| w.tim1rst().reset());
-        raw_rcc.apb2rstr.modify(|_, w| w.tim1rst().clear_bit());
 
         // todo perform manipulation of RCC register values for custom peripherals
         let mut rcc = raw_rcc
@@ -95,218 +93,9 @@ const APP: () = {
 
         // set up motor control pwm
         let tim1 = device.TIM1;
+        let bridge = Bridge::new(tim1, pwm1p, pwm1n, pwm2p, pwm2n);
 
-        tim1.cr1.write(|w| {
-            w.ckd()
-                .div1()
-                .arpe()
-                .enabled()
-                .cms()
-                .center_aligned3()
-                .opm()
-                .disabled()
-                .urs()
-                .counter_only()
-                .cen()
-                .disabled()
-        });
-
-        tim1.cr2.write(|w| {
-            w.ccpc()
-                .set_bit() // enable compare regs preloading
-                .ccus()
-                .clear_bit() // update compare regs by COM event only
-                .ois1()
-                .clear_bit()
-                .ois1n()
-                .set_bit()
-        });
-
-        tim1.ccmr1_output().modify(|_, w| {
-            w.cc1s()
-                .output()
-                .oc1fe()
-                .set_bit()
-                .oc1pe()
-                .set_bit()
-                .oc1m()
-                .pwm_mode1()
-        });
-        tim1.ccer.write(|w| {
-            w.cc1p()
-                .clear_bit()
-                .cc1ne()
-                .set_bit()
-                .cc1np()
-                .clear_bit()
-                .cc1e()
-                .set_bit()
-        });
-
-        let repetitions = 2;
-        let target_frequency: Hertz = 20.khz().into();
-        let cpu_frequency: Hertz = 48.mhz().into();
-        let arr = cpu_frequency.0 / (repetitions * target_frequency.0);
-        tim1.arr.write(|w| w.arr().bits(arr as u16));
-        tim1.rcr
-            .write(|w| unsafe { w.rep().bits((repetitions - 1) as u8) });
-
-        let deadtime = 61u16;
-        let raw_deadtime = if deadtime < 128 {
-            deadtime
-        } else if deadtime < 256 {
-            ((deadtime - 128) / 2) | 0x80
-        } else if deadtime < 512 {
-            ((deadtime - 256) / 8) | 0xc0
-        } else if deadtime < 1024 {
-            ((deadtime - 512) / 16) | 0xe0
-        } else {
-            0xff
-        };
-
-        tim1.cr1.modify(|_, w| w.urs().set_bit());
-        tim1.egr.write(|w| w.ug().set_bit());
-        tim1.cr1.modify(|_, w| w.urs().clear_bit());
-
-        tim1.bdtr.write(|w| unsafe {
-            w.moe()
-                .enabled()
-                .ossr()
-                .set_bit()
-                .ossi()
-                .set_bit()
-                .dtg()
-                .bits(raw_deadtime as u8)
-        });
-        tim1.cr1.modify(|_, w| w.cen().enabled());
-
-        tim1.ccr1.write(|w| w.ccr().bits(500));
-
-        tim1.cr1.modify(|_, w| w.urs().set_bit());
-        tim1.egr.write(|w| w.comg().set_bit()); // invoke change to compare register values
-        tim1.cr1.modify(|_, w| w.urs().clear_bit());
-
-        // tim1.cr1.modify(|_, w| {
-        //     w.ckd()
-        //         .div1() // clock deadtime the same as timer
-        //         .arpe()
-        //         .enabled() // buffer ARR
-        //         .cms()
-        //         .center_aligned2() // center aligned mode 2 - interrupt flags set only when counting up
-        //         .urs()
-        //         .counter_only() // only counter events overflow, underflow generate interrupt
-        // });
-        //
-        // let repetitions = 2;
-        // let target_frequency: Hertz = 20.khz().into();
-        // let cpu_frequency: Hertz = 48.mhz().into();
-        // let arr = cpu_frequency.0 / (repetitions * target_frequency.0);
-        //
-        // let deadtime = 31u16;
-        // let raw_deadtime = if deadtime < 128 {
-        //     deadtime
-        // } else if deadtime < 256 {
-        //     ((deadtime - 128) / 2) | 0x80
-        // } else if deadtime < 512 {
-        //     ((deadtime - 256) / 8) | 0xc0
-        // } else if deadtime < 1024 {
-        //     ((deadtime - 512) / 16) | 0xe0
-        // } else {
-        //     0xff
-        // };
-        //
-        // tim1.psc.write(|w| w.psc().bits(0));
-        // tim1.rcr
-        //     .write(|w| unsafe { w.rep().bits((repetitions - 1) as u8) });
-        // tim1.arr.write(|w| w.arr().bits(arr as u16));
-        //
-        // // break and deadtime
-        // tim1.bdtr.modify(|_, w| unsafe {
-        //     w.moe()
-        //         .disabled_idle() // outputs are disabled or forced to idle state
-        //         .aoe()
-        //         .clear_bit() // outputs (MOE) can be enabled only in the software
-        //         .bkp()
-        //         .set_bit() // brake input is active high
-        //         .bke()
-        //         .clear_bit() // break is disabled
-        //         .ossr()
-        //         .idle_level() // when inactive go to idle level of outputs in run mode
-        //         .ossi()
-        //         .idle_level() // when inactive go to idle level of outputs in idle mode
-        //         .lock()
-        //         .bits(0) // disable brake write protection
-        //         .dtg()
-        //         .bits(raw_deadtime as u8)
-        // });
-        //
-        // // disable capture/compare outputs
-        // tim1.ccer.modify(|_, w| {
-        //     w.cc1e()
-        //         .clear_bit()
-        //         .cc1ne()
-        //         .clear_bit()
-        //         .cc2e()
-        //         .clear_bit()
-        //         .cc2ne()
-        //         .clear_bit()
-        // });
-        //
-        // // enable preload, set output compare modes to pwm1
-        // tim1.ccmr1_output().modify(|_, w| {
-        //     w.oc2pe()
-        //         .set_bit()
-        //         .oc1pe()
-        //         .set_bit()
-        //         .oc1m()
-        //         .pwm_mode1()
-        //         .oc2m()
-        //         .pwm_mode1()
-        // });
-        //
-        // // set driver polarity
-        // tim1.ccer
-        //     .modify(|_, w| w.cc1p().clear_bit().cc2p().clear_bit());
-        //
-        // // set driver idle - when idle the motor is shorted using the low side.
-        // tim1.cr2.modify(|_, w| w.ois1().set_bit().ois2().set_bit());
-        //
-        // // set trigger for ADC in master mode
-        // tim1.cr2.modify(|_, w| w.mms().compare_oc4());
-        // tim1.ccmr2_output().modify(|_, w| w.oc4m().pwm_mode1());
-        // tim1.ccer.modify(|_, w| w.cc4p().clear_bit());
-        // tim1.cr2.modify(|_, w| w.ois4().set_bit());
-        //
-        // // set up values in compare registers
-        // tim1.cr1.modify(|_, w| w.udis().disabled());
-        // tim1.ccr1.write(|w| unsafe { w.ccr().bits(0) });
-        // tim1.ccr2.write(|w| unsafe { w.ccr().bits(0) });
-        // tim1.ccr3.write(|w| unsafe { w.ccr().bits(0) });
-        // tim1.ccr4.write(|w| unsafe { w.ccr().bits(211) }); // T.F. is this number?
-        // tim1.cr1.modify(|_, w| w.udis().enabled());
-        //
-        // // preload register values for complementary channels
-        // tim1.cr2.modify(|_, w| w.ccpc().set_bit());
-        // // force update
-        // tim1.egr.write(|w| w.ug().update());
-        // // enable brake main output
-        // tim1.bdtr.modify(|_, w| w.moe().enabled());
-        // // enable timer
-        // tim1.cr1.modify(|_, w| w.cen().enabled());
-        //
-        // // enable update interrupt
-        // // tim1.dier.modify(|_, w| w.uie().enabled());
-        //
-        // // force commute
-        // tim1.egr.write(|w| w.comg().set_bit());
-        //
-        // let speed: u16 = 2000;
-        // tim1.cr1.modify(|_, w| w.udis().disabled());
-        // tim1.ccr1.write(|w| unsafe { w.ccr().bits(speed) });
-        // tim1.ccr2.write(|w| unsafe { w.ccr().bits(speed) });
-        // tim1.ccr4.write(|w| unsafe { w.ccr().bits(211) }); // T.F. is this number?
-        // tim1.cr1.modify(|_, w| w.udis().enabled());
-        // tim1.egr.write(|w| w.comg().set_bit());
+        // bridge.set_duty(-0.5);
 
         let adc = ADC::new(device.ADC);
         adc.start_periodic_reading();
@@ -319,15 +108,15 @@ const APP: () = {
             encoder,
             adc,
             control_timer: timer,
-            tim1,
+            bridge,
         }
     }
 
-    #[task(binds = TIM1_BRK_UP_TRG_COM, resources = [tim1])]
+    #[task(binds = TIM1_BRK_UP_TRG_COM, resources = [bridge])]
     fn tim1_irs(cx: tim1_irs::Context) {
-        let tim1: &mut stm32::TIM1 = cx.resources.tim1;
-        tim1.sr.modify(|_, w| w.uif().clear());
-        defmt::debug!("picifuk")
+        // let tim1: &mut stm32::TIM1 = cx.resources.tim1;
+        // tim1.sr.modify(|_, w| w.uif().clear());
+        // defmt::debug!("picifuk")
     }
 
     #[idle(resources = [led, delay, adc])]
@@ -354,14 +143,34 @@ const APP: () = {
         cx.resources.can.interrupt();
     }
 
-    #[task(binds = TIM2, resources = [control_timer, encoder, last_position])]
+    #[task(binds = TIM2, resources = [control_timer, encoder, last_position, bridge, adc])]
     fn control_loop_tick(cx: control_loop_tick::Context) {
         let control_timer: &mut Timer<ControlTimer> = cx.resources.control_timer;
         if control_timer.wait().is_err() {
             defmt::error!("Timer wait errored unexpectedly.");
         }; // FIXME add method to timer to clear interrupt, without the need to call wait.
 
-        // defmt::debug!("speed: {:f32}", cx.resources.encoder.get_speed());
+        let p: f32 = 0.2f32;
+        let i: f32 = 0.4f32;
+
+        let dt = 1.0f32 / (CONTROL_LOOP_PERIOD_HZ as f32);
+
+        static mut I: f32 = 0f32;
+        let target_speed = -8.0f32;
+        let current_speed: f32 = cx.resources.encoder.get_speed();
+        let e = target_speed - current_speed;
+        defmt::debug!(
+            "speed: {:f32} e: {:f32} i: {:f32}",
+            current_speed,
+            e,
+            cx.resources.adc.get_motor_current()
+        );
+
+        unsafe { I += e * dt };
+        let action = e * p + i * (unsafe { I });
+
+        let bridge: &mut Bridge = cx.resources.bridge;
+        bridge.set_duty(action);
         // read_adc(cx.resources.adc, 4);
     }
 

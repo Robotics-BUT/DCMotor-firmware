@@ -2,6 +2,7 @@
 
 pub mod adc;
 pub mod board;
+pub mod bridge;
 pub mod can;
 mod consts;
 pub mod encoder;
