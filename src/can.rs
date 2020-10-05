@@ -1,10 +1,15 @@
 use crate::board;
+use stm32f0xx_hal::pac::can::TX;
 use stm32f0xx_hal::stm32;
 
 pub struct CANBus {
     can: stm32::CAN,
     _rx: board::CanRx,
     _tx: board::CanTx,
+}
+
+pub enum Event {
+    RxMessagePending,
 }
 
 impl CANBus {
@@ -67,10 +72,6 @@ impl CANBus {
         can.mcr.modify(|_, w| w.inrq().clear_bit());
         while !can.msr.read().inak().bit() {}
 
-        // initialize message pending interrupts
-        can.ier
-            .modify(|_, w| w.fmpie0().set_bit().fmpie1().set_bit());
-
         defmt::trace!("bus is now initializing filters");
         can.fmr.modify(|_, w| w.finit().set_bit()); // filter init enabled
         can.fa1r.write(|w| w.fact0().clear_bit()); // filter is inactive
@@ -99,8 +100,101 @@ impl CANBus {
         }
     }
 
-    pub fn interrupt(&mut self) {
-        // let bits = can.rfr[0].read().bits();
-        // defmt::debug!("fmp0: {0:0..1}, MAP: {0:8..9}", bits);
+    pub fn write(&self, frame: &CANFrame) -> nb::Result<(), CANError> {
+        if self.can.tsr.read().tme0().bit_is_set() {
+            self.write_to_mailbox(&self.can.tx[0], frame);
+            Ok(())
+        } else if self.can.tsr.read().tme1().bit_is_set() {
+            self.write_to_mailbox(&self.can.tx[1], frame);
+            Ok(())
+        } else if self.can.tsr.read().tme2().bit_is_set() {
+            self.write_to_mailbox(&self.can.tx[2], frame);
+            Ok(())
+        } else {
+            Err(nb::Error::WouldBlock)
+        }
     }
+
+    fn write_to_mailbox(&self, tx: &TX, frame: &CANFrame) {
+        tx.tdtr.write(|w| unsafe { w.dlc().bits(frame.dlc) });
+
+        tx.tdlr.write(|w| unsafe { w.data0().bits(frame.data[0]) });
+        tx.tdlr.write(|w| unsafe { w.data1().bits(frame.data[1]) });
+        tx.tdlr.write(|w| unsafe { w.data2().bits(frame.data[2]) });
+        tx.tdlr.write(|w| unsafe { w.data3().bits(frame.data[3]) });
+        tx.tdhr.write(|w| unsafe { w.data4().bits(frame.data[4]) });
+        tx.tdhr.write(|w| unsafe { w.data5().bits(frame.data[5]) });
+        tx.tdhr.write(|w| unsafe { w.data6().bits(frame.data[6]) });
+        tx.tdhr.write(|w| unsafe { w.data7().bits(frame.data[7]) });
+
+        tx.tir.write(|w| unsafe {
+            w.stid()
+                .bits(frame.id)
+                .rtr()
+                .bit(frame.rtr)
+                .txrq()
+                .set_bit()
+        });
+    }
+
+    pub fn read(&self) -> nb::Result<CANFrame, CANError> {
+        for (i, rfr) in self.can.rfr.iter().enumerate() {
+            let pending = rfr.read().fmp().bits();
+            defmt::debug!("pending0: {:u8}", pending);
+
+            for _ in 0..pending {
+                let rx = &self.can.rx[i];
+                let id = rx.rir.read().stid().bits();
+                let rtr = rx.rir.read().rtr().bit_is_set();
+                let dlc = rx.rdtr.read().dlc().bits();
+
+                let data0 = rx.rdlr.read().data0().bits();
+                let data1 = rx.rdlr.read().data1().bits();
+                let data2 = rx.rdlr.read().data2().bits();
+                let data3 = rx.rdlr.read().data3().bits();
+                let data4 = rx.rdhr.read().data4().bits();
+                let data5 = rx.rdhr.read().data5().bits();
+                let data6 = rx.rdhr.read().data6().bits();
+                let data7 = rx.rdhr.read().data7().bits();
+
+                rfr.modify(|_, w| w.rfom().release()); // release
+                if rfr.read().fovr().bit_is_set() {
+                    rfr.modify(|_, w| w.fovr().clear());
+                }
+
+                if rfr.read().full().bit_is_set() {
+                    rfr.modify(|_, w| w.full().clear());
+                }
+
+                let frame = CANFrame {
+                    id,
+                    rtr,
+                    dlc,
+                    data: [data0, data1, data2, data3, data4, data5, data6, data7],
+                };
+                return Ok(frame);
+            }
+        }
+        Err(nb::Error::WouldBlock)
+    }
+
+    pub fn listen(&self, event: Event) {
+        match event {
+            Event::RxMessagePending => {
+                self.can
+                    .ier
+                    .modify(|_, w| w.fmpie0().set_bit().fmpie1().set_bit());
+            }
+        }
+    }
+}
+
+pub enum CANError {}
+
+#[derive(Copy, Clone, Default)]
+pub struct CANFrame {
+    pub id: u16,
+    pub rtr: bool,
+    pub dlc: u8,
+    pub data: [u8; 8],
 }

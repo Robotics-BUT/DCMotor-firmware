@@ -5,6 +5,7 @@ pub mod board;
 pub mod bridge;
 pub mod can;
 mod consts;
+pub mod controller;
 pub mod encoder;
 
 use core::sync::atomic::{AtomicUsize, Ordering};
