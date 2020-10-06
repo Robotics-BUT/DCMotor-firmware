@@ -38,7 +38,7 @@ const APP: () = {
         last_position: u16,
         #[init(canopen::NMTState::BootUp)]
         nmt_state: canopen::NMTState,
-        #[init(FAILSAFE_FULL)]
+        #[init(0)]
         failsafe_counter: u8, // when counter reaches 0, motors must stop
     }
 
@@ -111,8 +111,7 @@ const APP: () = {
         let bridge = Bridge::new(tim1, pwm1p, pwm1n, pwm2p, pwm2n);
 
         let dt = 1.0f32 / (CONTROL_LOOP_FREQUENCY_HZ as f32);
-        let mut controller = Controller::new(0.2, 0.4, dt);
-        controller.set_target(1.0);
+        let controller = Controller::new(0.2, 0.4, dt);
 
         let adc = ADC::new(device.ADC);
         adc.start_periodic_reading();
