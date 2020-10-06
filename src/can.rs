@@ -79,19 +79,16 @@ impl CANBus {
         can.fm1r.write(|w| w.fbm0().clear_bit()); // identifier mask mode for fbm0
         can.fs1r.write(|w| w.fsc0().set_bit()); // 32 bit scale configuration
 
-        const FILTER0_ID: u16 = 0x0;
-        const FILTER0_MASK: u16 = 0x00;
-        const FILTER1_ID: u16 = 0x00;
-        const FILTER1_MASK: u16 = 0x00;
+        // const FILTER0_ID: u16 = 0x0;
+        // const FILTER0_MASK: u16 = 0x00;
+        // const FILTER1_ID: u16 = 0x00;
+        // const FILTER1_MASK: u16 = 0x00;
         can.fb[0].fr1.write(|w| unsafe { w.bits(0) });
         can.fb[0].fr2.write(|w| unsafe { w.bits(0) });
 
         can.fa1r.write(|w| w.fact0().set_bit()); // filter is active
         can.fmr.modify(|_, w| w.finit().clear_bit()); // filter init disabled
         defmt::trace!("filters initialized");
-
-        let bits = can.mcr.read().bits();
-        defmt::trace!("fmp0: {0:0..31}, MAP: {0:8..9}", bits);
 
         Self {
             can,

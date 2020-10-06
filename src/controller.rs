@@ -3,6 +3,7 @@ pub struct Controller {
     s: f32,
     sum: f32,
     dt: f32,
+    target: f32,
 }
 
 impl Controller {
@@ -10,13 +11,18 @@ impl Controller {
         Self {
             p,
             s,
-            sum: 0.0f32,
+            sum: 0.0,
             dt,
+            target: 0.0,
         }
     }
 
-    pub fn calculate_action(&mut self, target: f32, actual: f32) -> f32 {
-        let e = target - actual;
+    pub fn set_target(&mut self, target: f32) {
+        self.target = target;
+    }
+
+    pub fn calculate_action(&mut self, actual: f32) -> f32 {
+        let e = self.target - actual;
         self.sum += e * self.dt;
         self.p * e + self.s * self.sum
     }

@@ -4,21 +4,22 @@
 use dcdriver as _; // global logger + panicking-behavior + memory layout
 
 use stm32f0xx_hal::delay::Delay;
+use stm32f0xx_hal::prelude::*;
 use stm32f0xx_hal::timers::{Event, Timer};
-use stm32f0xx_hal::{prelude::*, stm32};
 
+use core::convert::TryFrom;
 use dcdriver::adc::ADC;
 use dcdriver::board::*;
 use dcdriver::bridge::Bridge;
-use dcdriver::can;
-use dcdriver::can::{CANBus, CANError, CANFrame};
+use dcdriver::can::CANBus;
+use dcdriver::canopen::*;
 use dcdriver::controller::Controller;
 use dcdriver::encoder::Encoder;
-use nb::Error;
-use stm32f0xx_hal::pac::Interrupt::{ADC_COMP, TIM1_BRK_UP_TRG_COM};
-use stm32f0xx_hal::time::Hertz;
+use dcdriver::{api, can, canopen};
 
 const CONTROL_LOOP_FREQUENCY_HZ: u32 = 1000;
+const ID: u8 = 9;
+const FAILSAFE_FULL: u8 = 3;
 
 #[rtic::app(device = stm32f0xx_hal::stm32, peripherals = true)]
 const APP: () = {
@@ -32,8 +33,13 @@ const APP: () = {
         control_timer: Timer<ControlTimer>,
         bridge: Bridge,
         controller: Controller,
+        nmt_timer: Timer<NMTTimer>,
         #[init(0)]
         last_position: u16,
+        #[init(canopen::NMTState::BootUp)]
+        nmt_state: canopen::NMTState,
+        #[init(0)]
+        failsafe_counter: u8, // when counter reaches 0, motors must stop
     }
 
     #[init]
@@ -55,7 +61,7 @@ const APP: () = {
         let gpioa = device.GPIOA.split(&mut rcc);
         let gpiob = device.GPIOB.split(&mut rcc);
 
-        let (can_rx, can_tx, mut pwm1p, mut pwm2p, mut input_voltage_pin, mut current_pin) =
+        let (can_rx, can_tx, pwm1p, pwm2p, _input_voltage_pin, _current_pin) =
             cortex_m::interrupt::free(|cs| {
                 (
                     gpioa.pa11.into_alternate_af4(cs),
@@ -67,18 +73,17 @@ const APP: () = {
                 )
             });
 
-        let (enc_a, enc_b, enc_i, mut led, mut led2, mut pwm1n, mut pwm2n) =
-            cortex_m::interrupt::free(|cs| {
-                (
-                    gpiob.pb4.into_alternate_af1(cs),
-                    gpiob.pb5.into_alternate_af1(cs),
-                    gpiob.pb0.into_alternate_af1(cs),
-                    gpiob.pb2.into_push_pull_output(cs),
-                    gpiob.pb10.into_push_pull_output(cs),
-                    gpiob.pb13.into_alternate_af2(cs),
-                    gpiob.pb14.into_alternate_af2(cs),
-                )
-            });
+        let (enc_a, enc_b, enc_i, led, led2, pwm1n, pwm2n) = cortex_m::interrupt::free(|cs| {
+            (
+                gpiob.pb4.into_alternate_af1(cs),
+                gpiob.pb5.into_alternate_af1(cs),
+                gpiob.pb0.into_alternate_af1(cs),
+                gpiob.pb2.into_push_pull_output(cs),
+                gpiob.pb10.into_push_pull_output(cs),
+                gpiob.pb13.into_alternate_af2(cs),
+                gpiob.pb14.into_alternate_af2(cs),
+            )
+        });
 
         let can = CANBus::new(device.CAN, can_rx, can_tx);
         can.listen(can::Event::RxMessagePending);
@@ -94,8 +99,12 @@ const APP: () = {
         let delay = Delay::new(core.SYST, &rcc);
 
         // set-up control loop sampling timer
-        let mut timer = Timer::tim2(device.TIM2, CONTROL_LOOP_FREQUENCY_HZ.hz(), &mut rcc);
-        timer.listen(Event::TimeOut);
+        let mut control_timer = Timer::tim2(device.TIM2, CONTROL_LOOP_FREQUENCY_HZ.hz(), &mut rcc);
+        control_timer.listen(Event::TimeOut);
+
+        // set-up nmt timer loop
+        let mut nmt_timer = Timer::tim6(device.TIM6, 1.hz(), &mut rcc);
+        nmt_timer.listen(Event::TimeOut);
 
         // set up motor control pwm
         let tim1 = device.TIM1;
@@ -114,21 +123,39 @@ const APP: () = {
             can,
             encoder,
             adc,
-            control_timer: timer,
+            control_timer,
+            nmt_timer,
             bridge,
             controller,
         }
     }
 
-    #[task(binds = TIM1_BRK_UP_TRG_COM, resources = [bridge])]
-    fn tim1_irs(cx: tim1_irs::Context) {
-        // let tim1: &mut stm32::TIM1 = cx.resources.tim1;
-        // tim1.sr.modify(|_, w| w.uif().clear());
-        // defmt::debug!("picifuk")
+    #[task(binds = TIM6_DAC, resources = [nmt_timer, can, nmt_state, failsafe_counter, controller])]
+    fn nmt(cx: nmt::Context) {
+        let timer: &mut Timer<NMTTimer> = cx.resources.nmt_timer;
+        if timer.wait().is_err() {
+            defmt::error!("Timer wait errored unexpectedly.");
+        };
+
+        let can: &mut CANBus = cx.resources.can;
+        let nmt: &NMTState = cx.resources.nmt_state;
+        can.write(&canopen::message_to_frame(
+            ID,
+            TxCANMessage::NMTHeartbeat(*nmt),
+        ));
+        defmt::trace!("Sending NMT heartbeat.");
+
+        let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
+        if *failsafe_counter == 0 {
+            let controller: &mut Controller = cx.resources.controller;
+            controller.set_target(0f32);
+        } else {
+            *failsafe_counter -= 1;
+        }
     }
 
     #[idle(resources = [led, delay, adc])]
-    fn main(mut cx: main::Context) -> ! {
+    fn main(cx: main::Context) -> ! {
         loop {
             cx.resources
                 .led
@@ -137,53 +164,67 @@ const APP: () = {
             cx.resources.delay.delay_ms(100u32);
             cx.resources.led.set_low().expect("Failed to set LED low.");
             cx.resources.delay.delay_ms(100u32);
-            // cx.resources
-            //     .adc
-            //     .lock(|adc| defmt::debug!("V {:f32}", adc.get_system_voltage()));
-            // cx.resources
-            //     .adc
-            //     .lock(|adc| defmt::debug!("I {:f32}", adc.get_motor_current()));
         }
     }
 
-    #[task(binds = CEC_CAN, resources = [can])]
+    #[task(binds = CEC_CAN, resources = [can, nmt_state, failsafe_counter, adc, controller])]
     fn process_can_message(cx: process_can_message::Context) {
         let can: &CANBus = cx.resources.can;
+        let nmt_state: &mut NMTState = cx.resources.nmt_state;
+        let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
+        let adc: &mut ADC = cx.resources.adc;
         match can.read() {
-            Ok(frame) => match frame.id & 0xff80 {
-                0x80 => {
-                    defmt::debug!("SYNC");
-                    can.write(&CANFrame {
-                        id: 0x500,
-                        rtr: false,
-                        dlc: 3,
-                        data: [0u8; 8],
-                    });
-                }
-                _ => {
-                    defmt::debug!("unsupported id: {:u16}", frame.id & 0xff80);
-                }
+            Ok(frame) => match canopen::message_from_frame(ID, &frame) {
+                Ok(message) => match message {
+                    RxCANMessage::Sync(_, _) => {
+                        defmt::debug!("SYNC");
+                        let tx_pdo1 = api::TxPDO1 {
+                            motor_current: adc.get_motor_current(),
+                            system_voltage: adc.get_system_voltage(),
+                        };
+                        let tx_pdo2 = api::TxPDO2 {
+                            die_temperature: adc.get_die_temperature(),
+                        };
+                        can.write(&canopen::message_to_frame(ID, tx_pdo1.as_message()));
+                        can.write(&canopen::message_to_frame(ID, tx_pdo2.as_message()));
+                    }
+                    RxCANMessage::PDO(pdo, data, dlc) => match pdo {
+                        PDO::PDO1 => match api::RxPDO1::try_from(&data[..dlc]) {
+                            Ok(pdo) => {
+                                *failsafe_counter = FAILSAFE_FULL;
+                                cx.resources.controller.set_target(pdo.target_speed);
+                            }
+                            Err(_) => {}
+                        },
+                        PDO::PDO2 => {}
+                        PDO::PDO3 => {}
+                        PDO::PDO4 => {}
+                    },
+                    RxCANMessage::NMT(command) => match command {
+                        NMTRequestedState::Operational => {
+                            *nmt_state = NMTState::Operational;
+                        }
+                        NMTRequestedState::Stopped => {
+                            *nmt_state = NMTState::Stopped;
+                        }
+                        NMTRequestedState::PreOperational => {
+                            *nmt_state = NMTState::PreOperational;
+                        }
+                        NMTRequestedState::ResetNode => {
+                            *nmt_state = NMTState::BootUp;
+                        }
+                        NMTRequestedState::ResetCommunication => {
+                            *nmt_state = NMTState::BootUp;
+                        }
+                    },
+                    RxCANMessage::SDO => {}
+                },
+                Err(_) => defmt::debug!("Failed to parse frame."),
             },
             Err(_) => {
                 defmt::debug!("Failed to read.");
             }
         }
-        // match can.read() {
-        //     Ok(frame) => {
-        //         defmt::debug!("id: {:u16}", frame.id);
-        //         match can.write(&frame) {
-        //             Ok(_) => {
-        //                 defmt::debug!("sent");
-        //             }
-        //             Err(_) => {
-        //                 defmt::debug!("wb");
-        //             }
-        //         }
-        //     }
-        //     Err(_) => {
-        //         defmt::debug!("would block");
-        //     }
-        // }
     }
 
     #[task(binds = TIM2, resources = [control_timer, encoder, last_position, bridge, adc, led2, controller])]
@@ -199,10 +240,9 @@ const APP: () = {
         let controller: &mut Controller = cx.resources.controller;
         let bridge: &mut Bridge = cx.resources.bridge;
 
-        let target_speed = 0.0f32;
         let current_speed: f32 = cx.resources.encoder.get_speed();
 
-        bridge.set_duty(controller.calculate_action(target_speed, current_speed));
+        bridge.set_duty(controller.calculate_action(current_speed));
         led2.set_low();
     }
 

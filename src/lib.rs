@@ -1,9 +1,11 @@
 #![no_std]
 
 pub mod adc;
+pub mod api;
 pub mod board;
 pub mod bridge;
 pub mod can;
+pub mod canopen;
 mod consts;
 pub mod controller;
 pub mod encoder;

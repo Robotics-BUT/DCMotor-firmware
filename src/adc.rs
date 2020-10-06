@@ -62,7 +62,7 @@ impl ADC {
 
     pub fn start_periodic_reading(&self) {
         let adc = &self.adc;
-        adc.chselr.write(|w| unsafe {
+        adc.chselr.write(|w| {
             w.chsel5()
                 .selected()
                 .chsel6()
@@ -147,6 +147,11 @@ impl ADC {
 
     pub fn get_motor_current(&self) -> f32 {
         ((self.current_value as i16) - 635) as f32 / (185.0 / (2.0 / 3.0))
+    }
+
+    pub fn get_die_temperature(&self) -> f32 {
+        defmt::error!("Getting temperature is not implemented.");
+        0f32
     }
 
     // TODO figure out howto read VDDA from VREF

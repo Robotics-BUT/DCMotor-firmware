@@ -17,6 +17,4 @@ pub type CanRx = PA11<Alternate<AF4>>;
 pub type CanTx = PA12<Alternate<AF4>>;
 
 pub type ControlTimer = stm32::TIM2;
-
-const ADC_CURRENT_CHANNEL: u8 = 5;
-const ADC_VOLTAGE_CHANNEL: u8 = 6;
+pub type NMTTimer = stm32::TIM6;
