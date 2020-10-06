@@ -92,6 +92,10 @@ impl ADC {
                 .overwritten()
         });
 
+        // enables triggering of measurements by the motor control timer
+        adc.cfgr1
+            .modify(|_, w| w.exten().falling_edge().extsel().tim1_trgo());
+
         adc.cr.modify(|_, w| w.adstart().start_conversion());
     }
 

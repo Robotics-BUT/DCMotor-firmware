@@ -63,6 +63,8 @@ impl Bridge {
                 .clear_bit() // output 2 P idle state is LOW
                 .ois2n()
                 .set_bit() // output 2 N idle state is HIGH
+                .mms()
+                .compare_oc1() // enable TRGO event generation - triggers ADC
         });
 
         bridge.timer.ccmr1_output().modify(|_, w| {
