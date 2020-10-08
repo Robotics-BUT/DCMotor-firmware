@@ -149,7 +149,7 @@ impl Bridge {
 
     fn get_arr() -> u16 {
         let repetitions = 2;
-        let target_frequency: Hertz = 40.khz().into();
+        let target_frequency: Hertz = 20.khz().into();
         let cpu_frequency: Hertz = 48.mhz().into();
         (cpu_frequency.0 / (repetitions * target_frequency.0)) as u16
     }

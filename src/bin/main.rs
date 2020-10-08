@@ -8,6 +8,7 @@ use stm32f0xx_hal::prelude::*;
 use stm32f0xx_hal::timers::{Event, Timer};
 
 use core::convert::TryFrom;
+use core::ptr;
 use dcdriver::adc::ADC;
 use dcdriver::board::*;
 use dcdriver::bridge::Bridge;
@@ -16,6 +17,7 @@ use dcdriver::canopen::*;
 use dcdriver::controller::Controller;
 use dcdriver::encoder::Encoder;
 use dcdriver::{api, can, canopen};
+use stm32f0xx_hal::stm32;
 
 const CONTROL_LOOP_FREQUENCY_HZ: u32 = 1000;
 const ID: u8 = 9;
@@ -111,10 +113,12 @@ const APP: () = {
         let bridge = Bridge::new(tim1, pwm1p, pwm1n, pwm2p, pwm2n);
 
         let dt = 1.0f32 / (CONTROL_LOOP_FREQUENCY_HZ as f32);
-        let controller = Controller::new(0.2, 0.4, dt);
+        let mut controller = Controller::new(0.2, 0.4, dt);
 
-        let adc = ADC::new(device.ADC);
-        adc.start_periodic_reading();
+        let adc = device.ADC;
+        let adc = ADC::new(adc);
+
+        controller.set_target(0.0);
 
         init::LateResources {
             led,
@@ -145,13 +149,13 @@ const APP: () = {
         ));
         defmt::trace!("Sending NMT heartbeat.");
 
-        let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
-        if *failsafe_counter == 0 {
-            let controller: &mut Controller = cx.resources.controller;
-            controller.set_target(0f32);
-        } else {
-            *failsafe_counter -= 1;
-        }
+        // let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
+        // if *failsafe_counter == 0 {
+        //     let controller: &mut Controller = cx.resources.controller;
+        //     controller.set_target(0f32);
+        // } else {
+        //     *failsafe_counter -= 1;
+        // }
     }
 
     #[idle(resources = [led, delay, adc])]
@@ -179,11 +183,11 @@ const APP: () = {
                     RxCANMessage::Sync(_, _) => {
                         defmt::debug!("SYNC");
                         let tx_pdo1 = api::TxPDO1 {
-                            motor_current: adc.get_motor_current(),
-                            system_voltage: adc.get_system_voltage(),
+                            motor_current: 0.0,
+                            system_voltage: 0.0,
                         };
                         let tx_pdo2 = api::TxPDO2 {
-                            die_temperature: adc.get_die_temperature(),
+                            die_temperature: 0.0,
                         };
                         can.write(&canopen::message_to_frame(ID, tx_pdo1.as_message()));
                         can.write(&canopen::message_to_frame(ID, tx_pdo2.as_message()));
@@ -233,21 +237,26 @@ const APP: () = {
         if control_timer.wait().is_err() {
             defmt::error!("Timer wait errored unexpectedly.");
         };
-
         let led2: &mut LED2 = cx.resources.led2;
         led2.set_high();
 
         let controller: &mut Controller = cx.resources.controller;
         let bridge: &mut Bridge = cx.resources.bridge;
+        let current: i16 = cx.resources.adc.get_averaged_current();
 
+        if current.abs() > 200 {
+            controller.set_target(0.0);
+            defmt::debug!("current: {:i16}", current);
+        }
         let current_speed: f32 = cx.resources.encoder.get_speed();
 
         bridge.set_duty(controller.calculate_action(current_speed));
         led2.set_low();
     }
 
-    #[task(binds = ADC_COMP, resources = [adc])]
+    #[task(binds = ADC_COMP, resources = [adc, led2])]
     fn adc_conversion_complete(cx: adc_conversion_complete::Context) {
-        cx.resources.adc.interrupt();
+        let adc: &mut ADC = cx.resources.adc;
+        adc.interrupt();
     }
 };
