@@ -1,3 +1,7 @@
+use crate::bridge::{fmaxf, fminf};
+
+const MAX_ACTION: f32 = 1.0;
+
 pub struct Controller {
     p: f32,
     s: f32,
@@ -24,6 +28,10 @@ impl Controller {
     pub fn calculate_action(&mut self, actual: f32) -> f32 {
         let e = self.target - actual;
         self.sum += e * self.dt;
-        self.p * e + self.s * self.sum
+        self.sum = fmaxf(-MAX_ACTION, fminf(self.sum, MAX_ACTION));
+        fmaxf(
+            -MAX_ACTION,
+            fminf(self.p * e + self.s * self.sum, MAX_ACTION),
+        )
     }
 }

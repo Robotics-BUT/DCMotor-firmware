@@ -113,12 +113,12 @@ const APP: () = {
         let bridge = Bridge::new(tim1, pwm1p, pwm1n, pwm2p, pwm2n);
 
         let dt = 1.0f32 / (CONTROL_LOOP_FREQUENCY_HZ as f32);
-        let mut controller = Controller::new(0.2, 0.4, dt);
+        let mut controller = Controller::new(0.3, 0.8, dt);
 
         let adc = device.ADC;
         let adc = ADC::new(adc);
 
-        controller.set_target(0.0);
+        controller.set_target(1.0);
 
         init::LateResources {
             led,
@@ -245,12 +245,14 @@ const APP: () = {
         let current: i16 = cx.resources.adc.get_averaged_current();
 
         if current.abs() > 200 {
-            controller.set_target(0.0);
-            defmt::debug!("current: {:i16}", current);
+            // controller.set_target(0.0);
         }
+        // defmt::debug!("current: {:i16}", current);
         let current_speed: f32 = cx.resources.encoder.get_speed();
 
-        bridge.set_duty(controller.calculate_action(current_speed));
+        let action: f32 = controller.calculate_action(current_speed);
+        defmt::debug!("speed: {:f32}, action: {:f32}", current_speed, action);
+        bridge.set_duty(action);
         led2.set_low();
     }
 

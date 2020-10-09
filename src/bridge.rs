@@ -3,6 +3,8 @@ use stm32f0xx_hal::pac::TIM1;
 use stm32f0xx_hal::time::Hertz;
 use stm32f0xx_hal::{prelude::*, stm32};
 
+const MAX_DUTY_COEF: f32 = 0.95;
+
 pub struct Bridge {
     timer: TIM1,
     _p1p: board::PWM1P,
@@ -64,7 +66,7 @@ impl Bridge {
                 .ois2n()
                 .set_bit() // output 2 N idle state is HIGH
                 .mms()
-                .compare_oc1() // enable TRGO event generation - triggers ADC
+                .compare_pulse() // enable TRGO event generation - triggers ADC
         });
 
         bridge.timer.ccmr1_output().modify(|_, w| {
@@ -85,6 +87,18 @@ impl Bridge {
                 .oc2m()
                 .pwm_mode1() // refer to the DS
         });
+        bridge.timer.ccmr2_output().modify(
+            |_, w| {
+                w.cc4s() // channel 2 as output
+                    .output()
+                    .oc4fe() // enable fast output
+                    .set_bit()
+                    .oc4pe() // enable preloading
+                    .set_bit()
+                    .oc4m()
+                    .toggle()
+            }, // refer to the DS
+        );
 
         bridge.timer.ccer.write(|w| {
             w.cc1e()
@@ -103,6 +117,8 @@ impl Bridge {
                 .set_bit() // enable complementary output for channel 2
                 .cc2np()
                 .clear_bit() // channel 2 complementary polarity is active HIGH
+                .cc4e()
+                .set_bit()
         });
 
         let arr = Self::get_arr();
@@ -138,8 +154,9 @@ impl Bridge {
         bridge.timer.cr1.modify(|_, w| w.cen().enabled());
 
         // set compare register values
-        bridge.timer.ccr1.write(|w| w.ccr().bits(500));
-        bridge.timer.ccr2.write(|w| w.ccr().bits(500));
+        bridge.timer.ccr1.write(|w| w.ccr().bits(0));
+        bridge.timer.ccr2.write(|w| w.ccr().bits(0));
+        bridge.timer.ccr4.write(|w| w.ccr().bits(0));
 
         // write compare registers
         bridge.generate_com_event();
@@ -160,11 +177,11 @@ impl Bridge {
     /// * `duty` a number within the range <-1;1> representing duty cycle of the bridge, its sign controls direction
     pub fn set_duty(&self, duty: f32) {
         let inverse = duty < 0f32;
-        let duty = fmaxf(-1f32, fminf(duty, 1f32));
+        let duty = fmaxf(-MAX_DUTY_COEF, fminf(duty, MAX_DUTY_COEF));
         // abs is not implemented for no_std
         let duty = if duty < 0f32 { -duty } else { duty };
         // defmt::debug!("{:f32}", duty);
-        let duty = (duty * (Self::get_arr() as f32)) as u16;
+        let duty = (duty * ((Self::get_arr() - 1) as f32)) as u16;
         if inverse {
             self.timer.ccer.modify(|_, w| {
                 w.cc1e()
@@ -190,6 +207,7 @@ impl Bridge {
         }
         self.timer.ccr1.write(|w| w.ccr().bits(duty));
         self.timer.ccr2.write(|w| w.ccr().bits(duty));
+        self.timer.ccr4.write(|w| w.ccr().bits(duty));
         self.generate_com_event();
     }
 
@@ -207,7 +225,7 @@ impl Bridge {
     }
 }
 #[no_mangle]
-fn fminf(a: f32, b: f32) -> f32 {
+pub fn fminf(a: f32, b: f32) -> f32 {
     if a < b {
         a
     } else {
@@ -216,7 +234,7 @@ fn fminf(a: f32, b: f32) -> f32 {
 }
 
 #[no_mangle]
-fn fmaxf(a: f32, b: f32) -> f32 {
+pub fn fmaxf(a: f32, b: f32) -> f32 {
     if a > b {
         a
     } else {

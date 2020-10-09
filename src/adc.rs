@@ -11,13 +11,16 @@ const VTEMPCAL30: *const u16 = 0x1FFF_F7B8 as *const u16;
 const VTEMPCAL110: *const u16 = 0x1FFF_F7C2 as *const u16;
 const VDD_CALIB: u32 = 3300;
 
+const FILTER_LEN: usize = 20;
+
 pub struct ADC {
     adc: stm32::ADC,
     vdda: u16,
     channel_index: u8,
     voltage_value: u16,
     current_value: u16,
-    current_queue: Queue<u32, U20>,
+    current_queue: [u32; FILTER_LEN],
+    filter_index: usize,
 }
 
 impl ADC {
@@ -55,7 +58,8 @@ impl ADC {
             channel_index: 0,
             voltage_value: 0,
             current_value: 0,
-            current_queue: Queue::new(),
+            current_queue: [0; 20],
+            filter_index: 0,
         }
     }
 
@@ -144,12 +148,12 @@ impl ADC {
     /// * `adc` the peripheral
     fn start_periodic_reading(adc: &stm32::ADC) {
         adc.chselr.write(|w| w.chsel6().selected());
-        adc.smpr.write(|w| w.smp().cycles239_5());
+        adc.smpr.write(|w| w.smp().cycles13_5());
         adc.cfgr1
             .modify(|_, w| w.res().twelve_bit().align().right().cont().single());
         adc.cfgr1
-            .modify(|_, w| w.exten().rising_edge().extsel().tim1_trgo());
-        adc.cfgr2.write(|w| w.ckmode().pclk_div4());
+            .modify(|_, w| w.exten().falling_edge().extsel().tim1_cc4());
+        // adc.cfgr2.write(|w| w.ckmode().pclk_div4());
         adc.ier.write(|w| w.eoseqie().enabled().eocie().enabled());
         adc.cr.modify(|_, w| w.adstart().start_conversion());
     }
@@ -158,32 +162,14 @@ impl ADC {
         let adc = &self.adc;
         if adc.isr.read().eoc().bit_is_set() {
             let result = adc.dr.read().data().bits();
+            // defmt::debug!("result: {:u16}", result);
             self.current_value = result;
-            if self.current_queue.len() == 20 {
-                self.current_queue.dequeue();
+            self.current_queue[self.filter_index] = result as u32;
+            self.filter_index += 1;
+
+            if self.filter_index == FILTER_LEN {
+                self.filter_index = 0;
             }
-            self.current_queue.enqueue(result as u32);
-            // defmt::trace!("curr: {:u16} {:i16}", result, volt);
-            // match self.channel_index {
-            //     0 => {
-            //         self.voltage_value = result;
-            //         defmt::trace!(
-            //             "volt: {:u8} {:u16}",
-            //             self.channel_index,
-            //             self.get_system_voltage()
-            //         );
-            //     }
-            //     1 => {
-            //         let volt = (u32::from(self.vdda) * (result as u32) * 3 / (2u32).pow(12)) as u16;
-            //         defmt::trace!("curr: {:u8} {:u16}", self.channel_index, volt);
-            //         // if self.current_queue.len() == 16 {
-            //         //     self.current_queue.dequeue();
-            //         // }
-            //         // self.current_queue.enqueue(result);
-            //         self.current_value = result
-            //     }
-            //     _ => {}
-            // }
             self.channel_index += 1;
             adc.isr.modify(|_, w| w.eoc().clear());
         }
@@ -200,11 +186,12 @@ impl ADC {
     //
     pub fn get_motor_current(&self) -> i16 {
         self.raw_to_current(self.current_value)
+        // ((u32::from(self.vdda) * (self.current_value as u32) * 4 / (2u32).pow(12)) as i16)
     }
     //
     fn raw_to_current(&self, raw: u16) -> i16 {
         let volt = 2500i16 - ((u32::from(self.vdda) * (raw as u32) * 4 / (2u32).pow(12)) as i16);
-        volt * 1000 / 180
+        ((volt as i32) * 1000 / 180) as i16
     }
 
     pub fn get_averaged_current(&self) -> i16 {
