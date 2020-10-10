@@ -8,8 +8,10 @@ use stm32f0xx_hal::prelude::*;
 use stm32f0xx_hal::timers::{Event, Timer};
 
 use core::convert::TryFrom;
+use core::ops::DerefMut;
 use core::ptr;
-use dcdriver::adc::ADC;
+use dcdriver::adc::{ADC, BUFFER, CHANNEL_COUNT};
+// use dcdriver::adc::BUFFER;
 use dcdriver::board::*;
 use dcdriver::bridge::Bridge;
 use dcdriver::can::CANBus;
@@ -17,6 +19,7 @@ use dcdriver::canopen::*;
 use dcdriver::controller::Controller;
 use dcdriver::encoder::Encoder;
 use dcdriver::{api, can, canopen};
+use stm32f0xx_hal::pac::DMA1;
 use stm32f0xx_hal::stm32;
 
 const CONTROL_LOOP_FREQUENCY_HZ: u32 = 1000;
@@ -41,7 +44,8 @@ const APP: () = {
         #[init(canopen::NMTState::BootUp)]
         nmt_state: canopen::NMTState,
         #[init(0)]
-        failsafe_counter: u8, // when counter reaches 0, motors must stop
+        failsafe_counter: u8, // when counter reaches 0, motors must stop,
+        dma: DMA1,
     }
 
     #[init]
@@ -50,7 +54,7 @@ const APP: () = {
         let mut device: stm32f0xx_hal::stm32::Peripherals = cx.device;
 
         let raw_rcc = device.RCC;
-
+        raw_rcc.ahbenr.modify(|_, w| w.dma1en().enabled());
         // todo perform manipulation of RCC register values for custom peripherals
         let mut rcc = raw_rcc
             .configure()
@@ -118,6 +122,43 @@ const APP: () = {
         let adc = device.ADC;
         let adc = ADC::new(adc);
 
+        let dma = device.DMA1;
+        // channel 1, 2 can be used for ADC
+        let channel = &dma.ch1;
+        channel.cr.reset();
+        channel.cr.write(|w| {
+            w.mem2mem()
+                .disabled()
+                .pl()
+                .very_high()
+                .msize()
+                .bits16()
+                .psize()
+                .bits16()
+                .minc()
+                .enabled()
+                .pinc()
+                .disabled()
+                .dir()
+                .from_peripheral()
+                .tcie()
+                .enabled()
+                .circ()
+                .enabled()
+        });
+
+        // number of data - current and voltage channels
+        channel.ndtr.write(|w| w.ndt().bits(CHANNEL_COUNT as u16));
+
+        let dr_addr = unsafe { &(*stm32::ADC::ptr()).dr as *const _ as u32 };
+        channel.par.write(|w| w.pa().bits(dr_addr));
+
+        let buffer_address = unsafe { BUFFER.as_ptr() as u32 };
+        channel.mar.write(|w| w.ma().bits(buffer_address));
+
+        // enable channel
+        channel.cr.modify(|_, w| w.en().enabled());
+
         controller.set_target(1.0);
 
         init::LateResources {
@@ -131,6 +172,17 @@ const APP: () = {
             nmt_timer,
             bridge,
             controller,
+            dma,
+        }
+    }
+
+    #[task(binds = DMA1_CH1, resources = [dma, adc])]
+    fn dma_handler(cx: dma_handler::Context) {
+        let dma: &mut DMA1 = cx.resources.dma;
+        let adc: &mut ADC = cx.resources.adc;
+        if dma.isr.read().tcif1().bit_is_set() {
+            dma.ifcr.write(|w| w.ctcif1().set_bit());
+            adc.dma_interrupt();
         }
     }
 
@@ -245,6 +297,7 @@ const APP: () = {
         let bridge: &mut Bridge = cx.resources.bridge;
         let current: i16 = cx.resources.adc.get_averaged_current();
         let voltage: u16 = cx.resources.adc.get_system_voltage();
+        let temp: i16 = cx.resources.adc.get_die_temperature();
 
         if current.abs() > 200 {
             // controller.set_target(0.0);
@@ -254,11 +307,12 @@ const APP: () = {
 
         let action: f32 = controller.calculate_action(current_speed);
         defmt::debug!(
-            "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}",
+            "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}, temp: {:i16}",
             current_speed,
             action,
             current,
-            voltage
+            voltage,
+            temp
         );
         bridge.set_duty(action);
         led2.set_low();
@@ -267,6 +321,7 @@ const APP: () = {
     #[task(binds = ADC_COMP, resources = [adc, led2])]
     fn adc_conversion_complete(cx: adc_conversion_complete::Context) {
         let adc: &mut ADC = cx.resources.adc;
-        adc.interrupt();
+        defmt::debug!("adc: irq");
+        // adc.interrupt();
     }
 };

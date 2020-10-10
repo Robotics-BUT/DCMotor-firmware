@@ -9,16 +9,20 @@ use heapless::spsc::Queue;
 const VREFCAL: *const u16 = 0x1FFF_F7BA as *const u16;
 const VTEMPCAL30: *const u16 = 0x1FFF_F7B8 as *const u16;
 const VTEMPCAL110: *const u16 = 0x1FFF_F7C2 as *const u16;
-const VDD_CALIB: u32 = 3300;
+const VDD_CALIB: u16 = 3300;
 
 const FILTER_LEN: usize = 20;
+
+pub const CHANNEL_COUNT: usize = 3;
+
+pub static mut BUFFER: [u16; CHANNEL_COUNT] = [0; CHANNEL_COUNT];
 
 pub struct ADC {
     adc: stm32::ADC,
     vdda: u16,
-    channel_index: u8,
     voltage_value: u16,
     current_value: u16,
+    temperature_value: u16,
     current_queue: [u32; FILTER_LEN],
     filter_index: usize,
 }
@@ -39,25 +43,12 @@ impl ADC {
         Self::start_periodic_reading(&adc);
         defmt::debug!("VDDA: {:u16}", vdda);
 
-        //
-        // if adc.cr.read().aden().is_enabled() {
-        //     adc.cr.modify(|_, w| w.addis().disable());
-        // }
-        // while adc.cr.read().aden().bit_is_set() {}
-        // // adc.cfgr2.write(|w| w.ckmode().pclk_div4());
-        //
-        // if adc.isr.read().adrdy().is_ready() {
-        //     adc.isr.modify(|_, w| w.adrdy().clear());
-        // }
-        // adc.cr.modify(|_, w| w.aden().enabled());
-        // while adc.isr.read().adrdy().is_not_ready() {}
-
         Self {
             adc,
             vdda,
-            channel_index: 0,
             voltage_value: 0,
             current_value: 0,
+            temperature_value: 0,
             current_queue: [0; 20],
             filter_index: 0,
         }
@@ -113,7 +104,7 @@ impl ADC {
     /// * `adc` the peripheral
     fn read_vdda(adc: &stm32::ADC) -> u16 {
         defmt::trace!("Enabling internal voltage reference.");
-        adc.ccr.modify(|_, w| w.vrefen().set_bit());
+        adc.ccr.modify(|_, w| w.vrefen().enabled().tsen().enabled());
         defmt::trace!("Enabling the channel for the internal voltage reference.");
         adc.chselr.write(|w| unsafe { w.chsel17().selected() });
         defmt::trace!("Setting up the sample time to the longest possible.");
@@ -131,7 +122,7 @@ impl ADC {
 
         let vrefint_read = u32::from(adc.dr.read().bits());
         let vrefint_cal = u32::from(unsafe { ptr::read(VREFCAL) });
-        let res = (VDD_CALIB * vrefint_cal / vrefint_read) as u16;
+        let res = (u32::from(VDD_CALIB) * vrefint_cal / vrefint_read) as u16;
 
         defmt::trace!("Disabling internal voltage reference.");
         adc.ccr.modify(|_, w| w.vrefen().disabled());
@@ -147,44 +138,51 @@ impl ADC {
     /// # Arguments
     /// * `adc` the peripheral
     fn start_periodic_reading(adc: &stm32::ADC) {
-        adc.chselr
-            .write(|w| w.chsel5().selected().chsel6().selected());
+        adc.chselr.write(|w| {
+            w.chsel5()
+                .selected()
+                .chsel6()
+                .selected()
+                .chsel16()
+                .selected()
+        });
         adc.smpr.write(|w| w.smp().cycles13_5());
-        adc.cfgr1
-            .modify(|_, w| w.res().twelve_bit().align().right().cont().single());
+        adc.cfgr1.modify(|_, w| {
+            w.res()
+                .twelve_bit()
+                .align()
+                .right()
+                .cont()
+                .single()
+                .dmacfg()
+                .circular()
+                .dmaen()
+                .enabled()
+        });
         adc.cfgr1
             .modify(|_, w| w.exten().falling_edge().extsel().tim1_cc4());
         // adc.cfgr2.write(|w| w.ckmode().pclk_div4());
-        adc.ier.write(|w| w.eoseqie().enabled().eocie().enabled());
+        // adc.ier.write(|w| w.eoseqie().enabled().eocie().enabled());
         adc.cr.modify(|_, w| w.adstart().start_conversion());
     }
 
-    pub fn interrupt(&mut self) {
+    pub fn dma_interrupt(&mut self) {
         let adc = &self.adc;
-        if adc.isr.read().eoc().bit_is_set() {
-            let result = adc.dr.read().data().bits();
-            match self.channel_index {
-                0 => {
-                    self.channel_index = 1;
-                }
-                _ => {
-                    self.current_value = result;
-                    self.current_queue[self.filter_index] = result as u32;
-                    self.filter_index += 1;
+        unsafe {
+            self.voltage_value = BUFFER[0];
+            self.current_value = BUFFER[1];
+            self.temperature_value = BUFFER[2];
 
-                    if self.filter_index == FILTER_LEN {
-                        self.filter_index = 0;
-                    }
-                    self.channel_index = 0;
-                }
+            self.current_queue[self.filter_index] = self.current_value as u32;
+            self.filter_index += 1;
+
+            if self.filter_index == FILTER_LEN {
+                self.filter_index = 0;
             }
+        }
 
-            adc.isr.modify(|_, w| w.eoc().clear());
-        }
-        if adc.isr.read().eoseq().bit_is_set() {
-            self.channel_index = 0;
-            adc.isr.modify(|_, w| w.eoseq().clear());
-        }
+        // restart conversion
+        adc.cr.modify(|_, w| w.adstart().start_conversion());
     }
 
     /// Returns the system voltage in millivolts.
@@ -208,5 +206,17 @@ impl ADC {
 
         let sum = (sum / number_of_samples as u32);
         self.raw_to_current(sum as u16)
+    }
+
+    pub fn get_die_temperature(&self) -> i16 {
+        let vtemp30_cal = i32::from(unsafe { ptr::read(VTEMPCAL30) }) * 100;
+        let vtemp110_cal = i32::from(unsafe { ptr::read(VTEMPCAL110) }) * 100;
+
+        let mut temperature = i32::from(self.temperature_value) * 100;
+        temperature = (temperature * (i32::from(self.vdda) / i32::from(VDD_CALIB))) - vtemp30_cal;
+        temperature *= (110 - 30) * 100;
+        temperature /= vtemp110_cal - vtemp30_cal;
+        temperature += 3000;
+        temperature as i16
     }
 }
