@@ -147,7 +147,8 @@ impl ADC {
     /// # Arguments
     /// * `adc` the peripheral
     fn start_periodic_reading(adc: &stm32::ADC) {
-        adc.chselr.write(|w| w.chsel6().selected());
+        adc.chselr
+            .write(|w| w.chsel5().selected().chsel6().selected());
         adc.smpr.write(|w| w.smp().cycles13_5());
         adc.cfgr1
             .modify(|_, w| w.res().twelve_bit().align().right().cont().single());
@@ -162,15 +163,22 @@ impl ADC {
         let adc = &self.adc;
         if adc.isr.read().eoc().bit_is_set() {
             let result = adc.dr.read().data().bits();
-            // defmt::debug!("result: {:u16}", result);
-            self.current_value = result;
-            self.current_queue[self.filter_index] = result as u32;
-            self.filter_index += 1;
+            match self.channel_index {
+                0 => {
+                    self.channel_index = 1;
+                }
+                _ => {
+                    self.current_value = result;
+                    self.current_queue[self.filter_index] = result as u32;
+                    self.filter_index += 1;
 
-            if self.filter_index == FILTER_LEN {
-                self.filter_index = 0;
+                    if self.filter_index == FILTER_LEN {
+                        self.filter_index = 0;
+                    }
+                    self.channel_index = 0;
+                }
             }
-            self.channel_index += 1;
+
             adc.isr.modify(|_, w| w.eoc().clear());
         }
         if adc.isr.read().eoseq().bit_is_set() {

@@ -183,10 +183,11 @@ const APP: () = {
                     RxCANMessage::Sync(_, _) => {
                         defmt::debug!("SYNC");
                         let tx_pdo1 = api::TxPDO1 {
+                            current_speed: 0.0,
                             motor_current: 0.0,
-                            system_voltage: 0.0,
                         };
                         let tx_pdo2 = api::TxPDO2 {
+                            system_voltage: 0.0,
                             die_temperature: 0.0,
                         };
                         can.write(&canopen::message_to_frame(ID, tx_pdo1.as_message()));
@@ -243,6 +244,7 @@ const APP: () = {
         let controller: &mut Controller = cx.resources.controller;
         let bridge: &mut Bridge = cx.resources.bridge;
         let current: i16 = cx.resources.adc.get_averaged_current();
+        let voltage: u16 = cx.resources.adc.get_system_voltage();
 
         if current.abs() > 200 {
             // controller.set_target(0.0);
@@ -251,7 +253,13 @@ const APP: () = {
         let current_speed: f32 = cx.resources.encoder.get_speed();
 
         let action: f32 = controller.calculate_action(current_speed);
-        defmt::debug!("speed: {:f32}, action: {:f32}", current_speed, action);
+        defmt::debug!(
+            "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}",
+            current_speed,
+            action,
+            current,
+            voltage
+        );
         bridge.set_duty(action);
         led2.set_low();
     }
