@@ -173,9 +173,9 @@ impl ADC {
         unsafe {
             self.voltage_value = BUFFER[0];
             self.current_value = BUFFER[1];
-            if self.initial_current.is_none() {
-                self.initial_current = Some(self.raw_to_current(self.current_value));
-            }
+            // if self.initial_current.is_none() {
+            //     self.initial_current = Some(self.raw_to_current(self.current_value));
+            // }
             self.temperature_value = BUFFER[2];
 
             self.current_queue[self.filter_index] = self.current_value as u32;
