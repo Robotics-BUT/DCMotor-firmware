@@ -25,6 +25,7 @@ pub struct ADC {
     temperature_value: u16,
     current_queue: [u32; FILTER_LEN],
     filter_index: usize,
+    initial_current: Option<i16>,
 }
 
 impl ADC {
@@ -51,6 +52,7 @@ impl ADC {
             temperature_value: 0,
             current_queue: [0; 20],
             filter_index: 0,
+            initial_current: None,
         }
     }
 
@@ -171,6 +173,9 @@ impl ADC {
         unsafe {
             self.voltage_value = BUFFER[0];
             self.current_value = BUFFER[1];
+            if self.initial_current.is_none() {
+                self.initial_current = Some(self.raw_to_current(self.current_value));
+            }
             self.temperature_value = BUFFER[2];
 
             self.current_queue[self.filter_index] = self.current_value as u32;
@@ -191,12 +196,12 @@ impl ADC {
     }
     //
     pub fn get_motor_current(&self) -> i16 {
-        self.raw_to_current(self.current_value)
+        self.raw_to_current(self.current_value) - self.initial_current.unwrap_or(0)
     }
     //
     fn raw_to_current(&self, raw: u16) -> i16 {
         let volt = 2500i16 - ((u32::from(self.vdda) * (raw as u32) * 4 / (2u32).pow(12)) as i16);
-        ((volt as i32) * 1000 / 180) as i16
+        ((volt as i32) * 1000 / 180) as i16 - self.initial_current.unwrap_or(0)
     }
 
     pub fn get_averaged_current(&self) -> i16 {
