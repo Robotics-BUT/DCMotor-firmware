@@ -192,7 +192,6 @@ impl ADC {
     //
     pub fn get_motor_current(&self) -> i16 {
         self.raw_to_current(self.current_value)
-        // ((u32::from(self.vdda) * (self.current_value as u32) * 4 / (2u32).pow(12)) as i16)
     }
     //
     fn raw_to_current(&self, raw: u16) -> i16 {

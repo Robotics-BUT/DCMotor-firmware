@@ -25,6 +25,10 @@ use stm32f0xx_hal::stm32;
 const CONTROL_LOOP_FREQUENCY_HZ: u32 = 1000;
 const ID: u8 = 9;
 const FAILSAFE_FULL: u8 = 3;
+const MAX_ALLOWED_ABS_CURRENT: i16 = 4000;
+const CONTROLLER_P: f32 = 0.3;
+const CONTROLLER_S: f32 = 0.8;
+const OVERCURRENT_TIMER_THRESHOLD: u16 = 500;
 
 #[rtic::app(device = stm32f0xx_hal::stm32, peripherals = true)]
 const APP: () = {
@@ -46,6 +50,8 @@ const APP: () = {
         #[init(0)]
         failsafe_counter: u8, // when counter reaches 0, motors must stop,
         dma: DMA1,
+        #[init(0)]
+        overcurrent_duration_counter: u16,
     }
 
     #[init]
@@ -67,29 +73,29 @@ const APP: () = {
         let gpioa = device.GPIOA.split(&mut rcc);
         let gpiob = device.GPIOB.split(&mut rcc);
 
-        let (can_rx, can_tx, pwm1p, pwm2p, _input_voltage_pin, _current_pin) =
-            cortex_m::interrupt::free(|cs| {
-                (
-                    gpioa.pa11.into_alternate_af4(cs),
-                    gpioa.pa12.into_alternate_af4(cs),
-                    gpioa.pa8.into_alternate_af2(cs),
-                    gpioa.pa9.into_alternate_af2(cs),
-                    gpioa.pa5.into_analog(cs),
-                    gpioa.pa6.into_analog(cs),
-                )
-            });
-
-        let (enc_a, enc_b, enc_i, led, led2, pwm1n, pwm2n) = cortex_m::interrupt::free(|cs| {
+        let (pwm1p, pwm2p, _input_voltage_pin, _current_pin) = cortex_m::interrupt::free(|cs| {
             (
-                gpiob.pb4.into_alternate_af1(cs),
-                gpiob.pb5.into_alternate_af1(cs),
-                gpiob.pb0.into_alternate_af1(cs),
-                gpiob.pb2.into_push_pull_output(cs),
-                gpiob.pb10.into_push_pull_output(cs),
-                gpiob.pb13.into_alternate_af2(cs),
-                gpiob.pb14.into_alternate_af2(cs),
+                gpioa.pa8.into_alternate_af2(cs),
+                gpioa.pa9.into_alternate_af2(cs),
+                gpioa.pa5.into_analog(cs),
+                gpioa.pa6.into_analog(cs),
             )
         });
+
+        let (can_rx, can_tx, enc_a, enc_b, enc_i, led, led2, pwm1n, pwm2n) =
+            cortex_m::interrupt::free(|cs| {
+                (
+                    gpiob.pb8.into_alternate_af4(cs),
+                    gpiob.pb9.into_alternate_af4(cs),
+                    gpiob.pb4.into_alternate_af1(cs),
+                    gpiob.pb5.into_alternate_af1(cs),
+                    gpiob.pb0.into_alternate_af1(cs),
+                    gpiob.pb2.into_push_pull_output(cs),
+                    gpiob.pb10.into_push_pull_output(cs),
+                    gpiob.pb13.into_alternate_af2(cs),
+                    gpiob.pb14.into_alternate_af2(cs),
+                )
+            });
 
         let can = CANBus::new(device.CAN, can_rx, can_tx);
         can.listen(can::Event::RxMessagePending);
@@ -117,7 +123,7 @@ const APP: () = {
         let bridge = Bridge::new(tim1, pwm1p, pwm1n, pwm2p, pwm2n);
 
         let dt = 1.0f32 / (CONTROL_LOOP_FREQUENCY_HZ as f32);
-        let mut controller = Controller::new(0.3, 0.8, dt);
+        let mut controller = Controller::new(CONTROLLER_P, CONTROLLER_S, dt);
 
         let adc = device.ADC;
         let adc = ADC::new(adc);
@@ -159,7 +165,7 @@ const APP: () = {
         // enable channel
         channel.cr.modify(|_, w| w.en().enabled());
 
-        controller.set_target(1.0);
+        controller.set_target(0.0);
 
         init::LateResources {
             led,
@@ -201,13 +207,13 @@ const APP: () = {
         ));
         defmt::trace!("Sending NMT heartbeat.");
 
-        // let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
-        // if *failsafe_counter == 0 {
-        //     let controller: &mut Controller = cx.resources.controller;
-        //     controller.set_target(0f32);
-        // } else {
-        //     *failsafe_counter -= 1;
-        // }
+        let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
+        if *failsafe_counter == 0 {
+            let controller: &mut Controller = cx.resources.controller;
+            controller.set_target(0.0);
+        } else {
+            *failsafe_counter -= 1;
+        }
     }
 
     #[idle(resources = [led, delay, adc])]
@@ -223,7 +229,7 @@ const APP: () = {
         }
     }
 
-    #[task(binds = CEC_CAN, resources = [can, nmt_state, failsafe_counter, adc, controller])]
+    #[task(binds = CEC_CAN, resources = [can, nmt_state, failsafe_counter, adc, controller, encoder])]
     fn process_can_message(cx: process_can_message::Context) {
         let can: &CANBus = cx.resources.can;
         let nmt_state: &mut NMTState = cx.resources.nmt_state;
@@ -235,12 +241,12 @@ const APP: () = {
                     RxCANMessage::Sync(_, _) => {
                         defmt::debug!("SYNC");
                         let tx_pdo1 = api::TxPDO1 {
-                            current_speed: 0.0,
-                            motor_current: 0.0,
+                            current_speed: cx.resources.encoder.get_speed(),
+                            motor_current: adc.get_averaged_current() as f32,
                         };
                         let tx_pdo2 = api::TxPDO2 {
-                            system_voltage: 0.0,
-                            die_temperature: 0.0,
+                            system_voltage: adc.get_system_voltage() as f32 / 1000.0f32,
+                            die_temperature: adc.get_die_temperature() as f32 / 100.0f32,
                         };
                         can.write(&canopen::message_to_frame(ID, tx_pdo1.as_message()));
                         can.write(&canopen::message_to_frame(ID, tx_pdo2.as_message()));
@@ -284,7 +290,7 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM2, resources = [control_timer, encoder, last_position, bridge, adc, led2, controller])]
+    #[task(binds = TIM2, resources = [control_timer, encoder, last_position, bridge, adc, led2, controller, overcurrent_duration_counter])]
     fn control_loop_tick(cx: control_loop_tick::Context) {
         let control_timer: &mut Timer<ControlTimer> = cx.resources.control_timer;
         if control_timer.wait().is_err() {
@@ -299,21 +305,27 @@ const APP: () = {
         let voltage: u16 = cx.resources.adc.get_system_voltage();
         let temp: i16 = cx.resources.adc.get_die_temperature();
 
-        if current.abs() > 200 {
-            // controller.set_target(0.0);
+        if current.abs() > MAX_ALLOWED_ABS_CURRENT {
+            *cx.resources.overcurrent_duration_counter += 1;
+            defmt::debug!("stop: {:i16}", current);
+            if *cx.resources.overcurrent_duration_counter > OVERCURRENT_TIMER_THRESHOLD {
+                defmt::debug!("Emergency overcurrent stop.");
+                controller.set_target(0.0);
+            }
+        } else {
+            *cx.resources.overcurrent_duration_counter = 0;
         }
-        // defmt::debug!("current: {:i16}", current);
-        let current_speed: f32 = cx.resources.encoder.get_speed();
+        let current_speed: f32 = cx.resources.encoder.calculate_speed();
 
         let action: f32 = controller.calculate_action(current_speed);
-        defmt::debug!(
-            "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}, temp: {:i16}",
-            current_speed,
-            action,
-            current,
-            voltage,
-            temp
-        );
+        // defmt::debug!(
+        //     "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}, temp: {:i16}",
+        //     current_speed,
+        //     action,
+        //     current,
+        //     voltage,
+        //     temp
+        // );
         bridge.set_duty(action);
         led2.set_low();
     }

@@ -114,19 +114,32 @@ impl CANBus {
 
     fn write_to_mailbox(&self, tx: &TX, frame: &CANFrame) {
         tx.tdtr.write(|w| unsafe { w.dlc().bits(frame.dlc) });
-
-        tx.tdlr.write(|w| unsafe { w.data0().bits(frame.data[0]) });
-        tx.tdlr.write(|w| unsafe { w.data1().bits(frame.data[1]) });
-        tx.tdlr.write(|w| unsafe { w.data2().bits(frame.data[2]) });
-        tx.tdlr.write(|w| unsafe { w.data3().bits(frame.data[3]) });
-        tx.tdhr.write(|w| unsafe { w.data4().bits(frame.data[4]) });
-        tx.tdhr.write(|w| unsafe { w.data5().bits(frame.data[5]) });
-        tx.tdhr.write(|w| unsafe { w.data6().bits(frame.data[6]) });
-        tx.tdhr.write(|w| unsafe { w.data7().bits(frame.data[7]) });
+        tx.tdlr.write(|w| unsafe {
+            w.data0()
+                .bits(frame.data[0])
+                .data1()
+                .bits(frame.data[1])
+                .data2()
+                .bits(frame.data[2])
+                .data3()
+                .bits(frame.data[3])
+        });
+        tx.tdhr.write(|w| unsafe {
+            w.data4()
+                .bits(frame.data[4])
+                .data5()
+                .bits(frame.data[5])
+                .data6()
+                .bits(frame.data[6])
+                .data7()
+                .bits(frame.data[7])
+        });
 
         tx.tir.write(|w| unsafe {
             w.stid()
                 .bits(frame.id)
+                .ide()
+                .standard()
                 .rtr()
                 .bit(frame.rtr)
                 .txrq()
@@ -137,7 +150,6 @@ impl CANBus {
     pub fn read(&self) -> nb::Result<CANFrame, CANError> {
         for (i, rfr) in self.can.rfr.iter().enumerate() {
             let pending = rfr.read().fmp().bits();
-            defmt::debug!("pending0: {:u8}", pending);
 
             for _ in 0..pending {
                 let rx = &self.can.rx[i];

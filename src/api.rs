@@ -19,7 +19,6 @@ impl TryFrom<&[u8]> for RxPDO1 {
     }
 }
 
-// add another PDO with temperature
 pub struct TxPDO1 {
     pub current_speed: f32, // rad/s
     pub motor_current: f32, // A
@@ -31,6 +30,17 @@ impl TxPDO1 {
         LittleEndian::write_f32(&mut buffer[0..4], self.current_speed);
         LittleEndian::write_f32(&mut buffer[4..8], self.motor_current);
 
+        // defmt::debug!(
+        //     "{:u8} {:u8} {:u8} {:u8} {:u8} {:u8} {:u8} {:u8}",
+        //     buffer[0],
+        //     buffer[1],
+        //     buffer[2],
+        //     buffer[3],
+        //     buffer[4],
+        //     buffer[5],
+        //     buffer[6],
+        //     buffer[7]
+        // );
         TxCANMessage::PDO(PDO::PDO1, buffer, 8)
     }
 }

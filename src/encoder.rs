@@ -8,6 +8,7 @@ pub struct Encoder {
     _i: board::ENCI,
     last_position: u16,
     control_loop_frequency: f32,
+    last_calculated_speed: f32,
 }
 
 impl Encoder {
@@ -46,6 +47,7 @@ impl Encoder {
             last_position: 0,
             control_loop_frequency,
             _i: i,
+            last_calculated_speed: 0.0,
         }
     }
 
@@ -53,14 +55,20 @@ impl Encoder {
         self.timer.cnt.read().cnt().bits()
     }
 
-    pub fn get_speed(&mut self) -> f32 {
+    pub fn calculate_speed(&mut self) -> f32 {
         let position = self.get_position();
 
         let diff = position - self.last_position;
         self.last_position = position;
 
-        ((diff as i16) as f32) / 65535.0f32
+        self.last_calculated_speed = ((diff as i16) as f32) / 65535.0f32
             * core::f32::consts::PI
-            * (self.control_loop_frequency as f32)
+            * (self.control_loop_frequency as f32);
+
+        self.last_calculated_speed
+    }
+
+    pub fn get_speed(&self) -> f32 {
+        self.last_calculated_speed
     }
 }

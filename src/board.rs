@@ -13,8 +13,8 @@ pub type ENCI = PB0<Alternate<AF1>>; // is PB3 AF2 on REVA boards
 pub type LED = PB2<Output<PushPull>>;
 pub type LED2 = PB10<Output<PushPull>>;
 
-pub type CanRx = PA11<Alternate<AF4>>;
-pub type CanTx = PA12<Alternate<AF4>>;
+pub type CanRx = PB8<Alternate<AF4>>;
+pub type CanTx = PB9<Alternate<AF4>>;
 
 pub type ControlTimer = stm32::TIM2;
 pub type NMTTimer = stm32::TIM6;
