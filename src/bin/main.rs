@@ -24,7 +24,7 @@ use stm32f0xx_hal::stm32;
 
 const CONTROL_LOOP_FREQUENCY_HZ: u32 = 1000;
 const ID: u8 = 9;
-const FAILSAFE_FULL: u8 = 3;
+const FAILSAFE_FULL: u8 = 2;
 const MAX_ALLOWED_ABS_CURRENT: i16 = 4000;
 const CONTROLLER_P: f32 = 0.3;
 const CONTROLLER_S: f32 = 0.8;
@@ -115,7 +115,7 @@ const APP: () = {
         control_timer.listen(Event::TimeOut);
 
         // set-up nmt timer loop
-        let mut nmt_timer = Timer::tim6(device.TIM6, 1.hz(), &mut rcc);
+        let mut nmt_timer = Timer::tim6(device.TIM6, 2.hz(), &mut rcc);
         nmt_timer.listen(Event::TimeOut);
 
         // set up motor control pwm
