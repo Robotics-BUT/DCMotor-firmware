@@ -1,39 +1,57 @@
-# `app-template`
+# DCMotor firmware
 
-> Quickly set up a [`probe-run`] + [`defmt`] embedded project
+> This repo contains an alternative firmware for the DCMotor controller board written in Rust
 
 [`probe-run`]: https://crates.io/crates/probe-run
 [`defmt`]: https://github.com/knurling-rs/defmt
+[`flip-link`]: https://github.com/knurling-rs/flip-link
 
-Currently setup instructions can be found [in this blog post].
+## Dependencies
 
-[in this blog post]: https://ferrous-systems.com/blog/defmt
+#### 1. `flip-link`:
 
-## Support
+<!-- TODO: update this once flip-link is on crates.io -->
+```console
+$ cargo install \
+    --git https://github.com/knurling-rs/flip-link \
+    --branch main
+```
 
-`app-template` is part of the [Knurling] project, [Ferrous Systems]' effort at
-improving tooling used to develop for embedded systems.
+#### 2. The **git** version of `probe-run`:
 
-If you think that our work is useful, consider sponsoring it via [GitHub
-Sponsors].
+<!-- TODO: update this once defmt is on crates.io? -->
+``` console
+$ cargo install \
+    --git https://github.com/knurling-rs/probe-run \
+    --branch main \
+    --features defmt
+```
+
+#### 3. Useful tools:
+
+```
+$ cargo install cargo-binutils cargo-blame
+```
+
+## Usage
+
+#### 1. Clone the code
+#### 2. Modify CANOpen ID in `main.rs`
+#### 3. Connect the driver board
+#### 4. Run
+
+```bash
+cargo run --release
+```
+
+## Acknowledgements
+
+DCMotor firmware was developed using tools that are part of the [Knurling] project, [Ferrous Systems]' effort at improving tooling used to develop for embedded systems. Various libraries contributed by the Rust and embedded Rust communities were also used.
+
+Development of the firmware was sponsored by the Robotics and AI research group at Faculty of Electrical Engineering and Communications at Brno University of Technology.
 
 ## License
-
-Licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
-  http://www.apache.org/licenses/LICENSE-2.0)
-
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
-
-### Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
-licensed as above, without any additional terms or conditions.
+MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 [Knurling]: https://github.com/knurling-rs/meta
 [Ferrous Systems]: https://ferrous-systems.com/
-[GitHub Sponsors]: https://github.com/sponsors/knurling-rs
