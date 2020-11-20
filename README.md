@@ -28,6 +28,9 @@ $ cargo install \
 ```
 $ cargo install cargo-binutils cargo-bloat
 ```
+#### 4. Udev rules
+
+Setup [udev rules](https://probe.rs/guide/2_probes/udev/)
 
 ## Usage
 
