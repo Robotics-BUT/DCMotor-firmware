@@ -25,10 +25,23 @@ use stm32f0xx_hal::stm32;
 const CONTROL_LOOP_FREQUENCY_HZ: u32 = 1000;
 const ID: u8 = 9;
 const FAILSAFE_FULL: u8 = 2;
-const MAX_ALLOWED_ABS_CURRENT: i16 = 4000;
-const CONTROLLER_P: f32 = 0.3;
-const CONTROLLER_S: f32 = 0.8;
-const OVERCURRENT_TIMER_THRESHOLD: u16 = 500;
+const MAX_ALLOWED_ABS_CURRENT: i16 = 1000;
+const SPEED_CONTROLLER_P: f32 = 0.3;
+const SPEED_CONTROLLER_S: f32 = 0.8;
+const OVERCURRENT_TIMER_THRESHOLD: u16 = 50;
+
+
+fn truncate_action(requested_action: f32, last_action: f32, current: i16) -> f32 {
+    if current.abs() > MAX_ALLOWED_ABS_CURRENT {
+        let overcurrent_ratio = (current.abs() as f32) / (MAX_ALLOWED_ABS_CURRENT as f32);
+        let truncated_action = last_action / overcurrent_ratio;
+        defmt::debug!("{:?} {:?} {:?} {:?} {:?}", current.abs(), MAX_ALLOWED_ABS_CURRENT, overcurrent_ratio, truncated_action, requested_action);
+        truncated_action
+    } else {
+        let p: f32 = 0.01;
+        last_action * (1.0-p) + requested_action * p
+    }
+}
 
 #[rtic::app(device = stm32f0xx_hal::stm32, peripherals = true)]
 const APP: () = {
@@ -41,7 +54,7 @@ const APP: () = {
         adc: ADC,
         control_timer: Timer<ControlTimer>,
         bridge: Bridge,
-        controller: Controller,
+        speed_controller: Controller,
         nmt_timer: Timer<NMTTimer>,
         #[init(0)]
         last_position: u16,
@@ -52,6 +65,8 @@ const APP: () = {
         dma: DMA1,
         #[init(0)]
         overcurrent_duration_counter: u16,
+        speed_target: f32,
+        action: f32,
     }
 
     #[init]
@@ -123,7 +138,7 @@ const APP: () = {
         let bridge = Bridge::new(tim1, pwm1p, pwm1n, pwm2p, pwm2n);
 
         let dt = 1.0f32 / (CONTROL_LOOP_FREQUENCY_HZ as f32);
-        let mut controller = Controller::new(CONTROLLER_P, CONTROLLER_S, dt);
+        let mut speed_controller = Controller::new(SPEED_CONTROLLER_P, SPEED_CONTROLLER_S, dt);
 
         let adc = device.ADC;
         let adc = ADC::new(adc);
@@ -165,7 +180,9 @@ const APP: () = {
         // enable channel
         channel.cr.modify(|_, w| w.en().enabled());
 
-        controller.set_target(0.0);
+        let speed_target = 2.0;
+        let action = 0.0;
+        speed_controller.set_target(speed_target);
 
         init::LateResources {
             led,
@@ -177,8 +194,10 @@ const APP: () = {
             control_timer,
             nmt_timer,
             bridge,
-            controller,
+            speed_controller,
             dma,
+            speed_target,
+            action,
         }
     }
 
@@ -192,7 +211,7 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM6_DAC, resources = [nmt_timer, can, nmt_state, failsafe_counter, controller])]
+    #[task(binds = TIM6_DAC, resources = [nmt_timer, can, nmt_state, failsafe_counter, speed_controller])]
     fn nmt(cx: nmt::Context) {
         let timer: &mut Timer<NMTTimer> = cx.resources.nmt_timer;
         if timer.wait().is_err() {
@@ -209,27 +228,27 @@ const APP: () = {
 
         let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
         if *failsafe_counter == 0 {
-            let controller: &mut Controller = cx.resources.controller;
-            controller.set_target(0.0);
+            let speed_controller: &mut Controller = cx.resources.speed_controller;
+            speed_controller.set_target(0.0);
         } else {
             *failsafe_counter -= 1;
         }
     }
 
-    #[idle(resources = [led, delay, adc])]
+    #[idle(resources = [led, delay, adc, speed_controller])]
     fn main(cx: main::Context) -> ! {
         loop {
             cx.resources
                 .led
                 .set_high()
                 .expect("Failed to set LED high.");
-            cx.resources.delay.delay_ms(100u32);
+            cx.resources.delay.delay_ms(500u32);
             cx.resources.led.set_low().expect("Failed to set LED low.");
-            cx.resources.delay.delay_ms(100u32);
+            cx.resources.delay.delay_ms(500u32);
         }
     }
 
-    #[task(binds = CEC_CAN, resources = [can, nmt_state, failsafe_counter, adc, controller, encoder])]
+    #[task(binds = CEC_CAN, resources = [can, nmt_state, failsafe_counter, adc, speed_controller, encoder, speed_target])]
     fn process_can_message(cx: process_can_message::Context) {
         let can: &CANBus = cx.resources.can;
         let nmt_state: &mut NMTState = cx.resources.nmt_state;
@@ -255,7 +274,8 @@ const APP: () = {
                         PDO::PDO1 => match api::RxPDO1::try_from(&data[..dlc]) {
                             Ok(pdo) => {
                                 *failsafe_counter = FAILSAFE_FULL;
-                                cx.resources.controller.set_target(pdo.target_speed);
+                                cx.resources.speed_controller.set_target(pdo.target_speed);
+                                *cx.resources.speed_target = pdo.target_speed;
                             }
                             Err(_) => {}
                         },
@@ -290,7 +310,9 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM2, resources = [control_timer, encoder, last_position, bridge, adc, led2, controller, overcurrent_duration_counter])]
+
+
+    #[task(binds = TIM2, resources = [control_timer, encoder, last_position, bridge, adc, led2, speed_controller, overcurrent_duration_counter, speed_target, action])]
     fn control_loop_tick(cx: control_loop_tick::Context) {
         let control_timer: &mut Timer<ControlTimer> = cx.resources.control_timer;
         if control_timer.wait().is_err() {
@@ -299,34 +321,22 @@ const APP: () = {
         let led2: &mut LED2 = cx.resources.led2;
         led2.set_high();
 
-        let controller: &mut Controller = cx.resources.controller;
+        let speed_controller: &mut Controller = cx.resources.speed_controller;
         let bridge: &mut Bridge = cx.resources.bridge;
         let current: i16 = cx.resources.adc.get_averaged_current();
         let voltage: u16 = cx.resources.adc.get_system_voltage();
         let temp: i16 = cx.resources.adc.get_die_temperature();
+        let target_speed: f32 = *cx.resources.speed_target;
 
-        if current.abs() > MAX_ALLOWED_ABS_CURRENT {
-            *cx.resources.overcurrent_duration_counter += 1;
-            defmt::debug!("stop: {:i16}", current);
-            if *cx.resources.overcurrent_duration_counter > OVERCURRENT_TIMER_THRESHOLD {
-                defmt::debug!("Emergency overcurrent stop.");
-                controller.set_target(0.0);
-            }
-        } else {
-            *cx.resources.overcurrent_duration_counter = 0;
-        }
+
+        speed_controller.set_target(target_speed);
         let current_speed: f32 = cx.resources.encoder.calculate_speed();
+        let action = speed_controller.calculate_action(current_speed);
 
-        let action: f32 = controller.calculate_action(current_speed);
-        // defmt::debug!(
-        //     "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}, temp: {:i16}",
-        //     current_speed,
-        //     action,
-        //     current,
-        //     voltage,
-        //     temp
-        // );
-        bridge.set_duty(action);
+        let truncated_action = truncate_action(action, *cx.resources.action, current);
+        bridge.set_duty(truncated_action);
+        *cx.resources.action = truncated_action;
+
         led2.set_low();
     }
 
