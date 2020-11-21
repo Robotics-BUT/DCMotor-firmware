@@ -52,10 +52,10 @@ jobs:
           args: --release --bin main -- -O binary dcdriver.bin
 
       - name: Rename .elf and .bin files
-          env:
-            TAG_VERSION: ${{ steps.version_tag.outputs.TAG_VERSION }}
-          run: |
-            mv target/thumbv6m-none-eabi/release/main dcdriver.elf
+        env:
+          TAG_VERSION: ${{ steps.version_tag.outputs.TAG_VERSION }}
+        run: |
+          mv target/thumbv6m-none-eabi/release/main dcdriver.elf
 
       - name: Create release
         uses: svenstaro/upload-release-action@v2
