@@ -16,19 +16,20 @@ $ cargo install flip-link
 #### 2. The **git** version of `probe-run`:
 
 <!-- TODO: update this once defmt is on crates.io? -->
-``` console
-$ cargo install \
-    --git https://github.com/knurling-rs/probe-run \
-    --branch main \
-    --features defmt
+```console
+$ cargo install probe-run
 ```
 
-#### 3. Useful tools:
-
+#### 3. Install toolchain
+```console
+$ rustup target add thumbv6m-none-eabi
 ```
+
+#### 4. Useful tools:
+```console
 $ cargo install cargo-binutils cargo-bloat
 ```
-#### 4. Udev rules
+#### 5. Udev rules
 
 Setup [udev rules](https://probe.rs/guide/2_probes/udev/)
 
