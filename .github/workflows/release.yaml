@@ -32,6 +32,13 @@ jobs:
           version: latest
           use-tool-cache: true
 
+      - name: Install flip-link
+        uses: actions-rs/install@v0.1
+        with:
+          crate: flip-link
+          version: latest
+          use-tool-cache: true
+
       - name: Run cargo build --release
         uses: actions-rs/cargo@v1
         with:
