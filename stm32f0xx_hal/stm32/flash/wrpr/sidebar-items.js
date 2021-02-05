@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register WRPR"],["WRP_R","Reader of field `WRP`"]]});

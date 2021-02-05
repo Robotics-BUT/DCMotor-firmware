@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["R","Reader of register RXDR"],["RXDR_R","Reader of field `RXDR`"]]});

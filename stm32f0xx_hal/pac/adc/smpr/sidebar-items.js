@@ -1,1 +1,0 @@
-initSidebarItems({"enum":[["SMP_A","Sampling time selection"]],"struct":[["SMP_W","Write proxy for field `SMP`"]],"type":[["R","Reader of register SMPR"],["SMP_R","Reader of field `SMP`"],["W","Writer for register SMPR"]]});

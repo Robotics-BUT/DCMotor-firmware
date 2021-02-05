@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["IwdgTimeout","Timeout configuration for the IWDG"],["Watchdog","Watchdog instance"]]});

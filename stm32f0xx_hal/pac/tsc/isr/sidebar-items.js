@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["EOAF_W","Write proxy for field `EOAF`"],["MCEF_W","Write proxy for field `MCEF`"]],"type":[["EOAF_R","Reader of field `EOAF`"],["MCEF_R","Reader of field `MCEF`"],["R","Reader of register ISR"],["W","Writer for register ISR"]]});

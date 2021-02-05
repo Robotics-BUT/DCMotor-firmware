@@ -1,1 +1,0 @@
-initSidebarItems({"type":[["CNT_R","Reader of field `CNT`"],["R","Reader of register IOG%sCR"]]});

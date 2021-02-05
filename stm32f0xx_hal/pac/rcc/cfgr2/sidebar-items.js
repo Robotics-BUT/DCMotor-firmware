@@ -1,1 +1,0 @@
-initSidebarItems({"enum":[["PREDIV_A","PREDIV division factor"]],"struct":[["PREDIV_W","Write proxy for field `PREDIV`"]],"type":[["PREDIV_R","Reader of field `PREDIV`"],["R","Reader of register CFGR2"],["W","Writer for register CFGR2"]]});

@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["FAR_W","Write proxy for field `FAR`"]],"type":[["W","Writer for register AR"]]});

@@ -1,1 +1,0 @@
-initSidebarItems({"enum":[["Event","Interrupt events"]],"struct":[["Timer","Hardware timers"]]});

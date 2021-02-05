@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["CECEN_W","Write proxy for field `CECEN`"],["TXEOM_W","Write proxy for field `TXEOM`"],["TXSOM_W","Write proxy for field `TXSOM`"]],"type":[["CECEN_R","Reader of field `CECEN`"],["R","Reader of register CR"],["TXEOM_R","Reader of field `TXEOM`"],["TXSOM_R","Reader of field `TXSOM`"],["W","Writer for register CR"]]});

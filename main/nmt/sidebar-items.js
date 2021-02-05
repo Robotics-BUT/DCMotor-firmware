@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["Context","Execution context"],["Resources","Resources `nmt` has access to"]]});

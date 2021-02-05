@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["Context","Execution context"],["Resources","Resources `dma_handler` has access to"]]});

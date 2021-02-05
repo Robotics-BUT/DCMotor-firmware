@@ -1,1 +1,0 @@
-initSidebarItems({"enum":[["LCK_A","Locked"],["RXDM_A","Receive data - line status"],["RXDP_A","Receive data + line status"]],"type":[["FN_R","Reader of field `FN`"],["LCK_R","Reader of field `LCK`"],["LSOF_R","Reader of field `LSOF`"],["R","Reader of register FNR"],["RXDM_R","Reader of field `RXDM`"],["RXDP_R","Reader of field `RXDP`"]]});

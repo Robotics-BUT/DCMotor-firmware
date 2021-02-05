@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["TXDATA_W","Write proxy for field `TXDATA`"]],"type":[["R","Reader of register TXDR"],["TXDATA_R","Reader of field `TXDATA`"],["W","Writer for register TXDR"]]});

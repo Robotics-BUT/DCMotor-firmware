@@ -1,1 +1,0 @@
-initSidebarItems({"struct":[["Context","Execution context"],["Resources","Resources `process_can_message` has access to"]]});
