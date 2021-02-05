@@ -29,14 +29,18 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: doc
+          args: --all --no-deps
 
-#      - name: link output directory
-#        run: mv target/thumbv6m-none-eabi/doc/dcdriver target/thumbv6m-none-eabi/doc/doc
+      - name: move to output directory
+        run: mkdir public && mv target/thumbv6m-none-eabi/doc public
+
+      - name: create index output directory
+        run: cp .github/index.html public
 
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@3.7.1
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages # The branch the action should deploy to.
-          FOLDER: target/thumbv6m-none-eabi/doc/dcdriver # The folder the action should deploy.
+          FOLDER: public # The folder the action should deploy.
           CLEAN: true # Automatically remove deleted files from the deploy branch
