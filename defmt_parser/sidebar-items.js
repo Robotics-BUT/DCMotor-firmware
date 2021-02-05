@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Fragment","A part of a format string."],["Level",""],["Type",""]],"fn":[["get_max_bitfield_range","returns Some(smallest_bit_index, largest_bit_index) contained in `params` if `params` contains any bitfields. None otherwise"],["parse",""]],"struct":[["Parameter","A `{{:parameter}}` in a format string."]]});
