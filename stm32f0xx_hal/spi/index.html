@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="API documentation for the Rust `spi` mod in crate `stm32f0xx_hal`."><meta name="keywords" content="rust, rustlang, rust-lang, spi"><title>stm32f0xx_hal::spi - Rust</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../light.css"  id="themeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css" disabled ><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled ><script id="default-settings"></script><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="icon" type="image/svg+xml" href="../../favicon.svg">
+<link rel="alternate icon" type="image/png" href="../../favicon-16x16.png">
+<link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc mod"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../stm32f0xx_hal/index.html'><div class='logo-container rust-logo'><img src='../../rust-logo.png' alt='logo'></div></a><p class="location">Module spi</p><div class="sidebar-elems"><div class="block items"><ul><li><a href="#structs">Structs</a></li><li><a href="#enums">Enums</a></li><li><a href="#traits">Traits</a></li></ul></div><p class="location"><a href="../index.html">stm32f0xx_hal</a></p><script>window.sidebarCurrent = {name: "spi", ty: "mod", relpath: "../"};</script><script defer src="../sidebar-items.js"></script></div></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!" aria-haspopup="menu"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices" role="menu"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><span class="help-button">?</span>
+                <a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><h1 class="fqn"><span class="out-of-band"><span id="render-detail"><a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">[<span class="inner">&#x2212;</span>]</a></span><a class="srclink" href="../../src/stm32f0xx_hal/spi.rs.html#1-532" title="goto source code">[src]</a></span><span class="in-band">Module <a href="../index.html">stm32f0xx_hal</a>::<wbr><a class="mod" href="">spi</a></span></h1><div class="docblock"><p>API for the integrate SPI peripherals</p>
+<p>The spi bus acts as the master (generating the clock) and you need to handle the CS separately.</p>
+<p>The most significant bit is transmitted first &amp; only 8-bit transfers are supported</p>
+<h1 id="example" class="section-header"><a href="#example">Example</a></h1>
+<p>Echo incoming data in the next transfer</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered">
+<span class="kw">use</span> <span class="ident">stm32f0xx_hal</span> <span class="kw">as</span> <span class="ident">hal</span>;
+
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">hal</span>::<span class="ident">pac</span>;
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">hal</span>::<span class="ident">prelude</span>::<span class="kw-2">*</span>;
+<span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">hal</span>::<span class="ident">spi</span>::{<span class="ident">Spi</span>, <span class="ident">Mode</span>, <span class="ident">Phase</span>, <span class="ident">Polarity</span>};
+
+<span class="ident">cortex_m</span>::<span class="ident">interrupt</span>::<span class="ident">free</span>(<span class="op">|</span><span class="ident">cs</span><span class="op">|</span> {
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">p</span> <span class="op">=</span> <span class="ident">pac</span>::<span class="ident">Peripherals</span>::<span class="ident">take</span>().<span class="ident">unwrap</span>();
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">rcc</span> <span class="op">=</span> <span class="ident">p</span>.<span class="ident">RCC</span>.<span class="ident">constrain</span>().<span class="ident">freeze</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">p</span>.<span class="ident">FLASH</span>);
+
+    <span class="kw">let</span> <span class="ident">gpioa</span> <span class="op">=</span> <span class="ident">p</span>.<span class="ident">GPIOA</span>.<span class="ident">split</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rcc</span>);
+
+    <span class="comment">// Configure pins for SPI</span>
+    <span class="kw">let</span> <span class="ident">sck</span> <span class="op">=</span> <span class="ident">gpioa</span>.<span class="ident">pa5</span>.<span class="ident">into_alternate_af0</span>(<span class="ident">cs</span>);
+    <span class="kw">let</span> <span class="ident">miso</span> <span class="op">=</span> <span class="ident">gpioa</span>.<span class="ident">pa6</span>.<span class="ident">into_alternate_af0</span>(<span class="ident">cs</span>);
+    <span class="kw">let</span> <span class="ident">mosi</span> <span class="op">=</span> <span class="ident">gpioa</span>.<span class="ident">pa7</span>.<span class="ident">into_alternate_af0</span>(<span class="ident">cs</span>);
+
+    <span class="comment">// Configure SPI with 1MHz rate</span>
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">spi</span> <span class="op">=</span> <span class="ident">Spi</span>::<span class="ident">spi1</span>(<span class="ident">p</span>.<span class="ident">SPI1</span>, (<span class="ident">sck</span>, <span class="ident">miso</span>, <span class="ident">mosi</span>), <span class="ident">Mode</span> {
+        <span class="ident">polarity</span>: <span class="ident">Polarity</span>::<span class="ident">IdleHigh</span>,
+        <span class="ident">phase</span>: <span class="ident">Phase</span>::<span class="ident">CaptureOnSecondTransition</span>,
+    }, <span class="number">1</span>.<span class="ident">mhz</span>(), <span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">rcc</span>);
+
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">data</span> <span class="op">=</span> [<span class="number">0</span>];
+    <span class="kw">loop</span> {
+        <span class="ident">spi</span>.<span class="ident">transfer</span>(<span class="kw-2">&amp;</span><span class="kw-2">mut</span> <span class="ident">data</span>).<span class="ident">unwrap</span>();
+    }
+});</pre></div>
+</div><h2 id="structs" class="section-header"><a href="#structs">Structs</a></h2>
+<table><tr class="module-item"><td><a class="struct" href="struct.EightBit.html" title="stm32f0xx_hal::spi::EightBit struct">EightBit</a></td><td class="docblock-short"><p>Typestate for 8-bit transfer size</p>
+</td></tr><tr class="module-item"><td><a class="struct" href="struct.Mode.html" title="stm32f0xx_hal::spi::Mode struct">Mode</a></td><td class="docblock-short"><p>SPI mode</p>
+</td></tr><tr class="module-item"><td><a class="struct" href="struct.SixteenBit.html" title="stm32f0xx_hal::spi::SixteenBit struct">SixteenBit</a></td><td class="docblock-short"><p>Typestate for 16-bit transfer size</p>
+</td></tr><tr class="module-item"><td><a class="struct" href="struct.Spi.html" title="stm32f0xx_hal::spi::Spi struct">Spi</a></td><td class="docblock-short"><p>SPI abstraction</p>
+</td></tr></table><h2 id="enums" class="section-header"><a href="#enums">Enums</a></h2>
+<table><tr class="module-item"><td><a class="enum" href="enum.Error.html" title="stm32f0xx_hal::spi::Error enum">Error</a></td><td class="docblock-short"><p>SPI error</p>
+</td></tr><tr class="module-item"><td><a class="enum" href="enum.Phase.html" title="stm32f0xx_hal::spi::Phase enum">Phase</a></td><td class="docblock-short"><p>Clock phase</p>
+</td></tr><tr class="module-item"><td><a class="enum" href="enum.Polarity.html" title="stm32f0xx_hal::spi::Polarity enum">Polarity</a></td><td class="docblock-short"><p>Clock polarity</p>
+</td></tr></table><h2 id="traits" class="section-header"><a href="#traits">Traits</a></h2>
+<table><tr class="module-item"><td><a class="trait" href="trait.MisoPin.html" title="stm32f0xx_hal::spi::MisoPin trait">MisoPin</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="trait" href="trait.MosiPin.html" title="stm32f0xx_hal::spi::MosiPin trait">MosiPin</a></td><td class="docblock-short"></td></tr><tr class="module-item"><td><a class="trait" href="trait.SckPin.html" title="stm32f0xx_hal::spi::SckPin trait">SckPin</a></td><td class="docblock-short"></td></tr></table></section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "stm32f0xx_hal";</script><script src="../../main.js"></script><script defer src="../../search-index.js"></script></body></html>

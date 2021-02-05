@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["RELOAD_W","Write proxy for field `RELOAD`"]],"type":[["R","Reader of register RVR"],["RELOAD_R","Reader of field `RELOAD`"],["W","Writer for register RVR"]]});

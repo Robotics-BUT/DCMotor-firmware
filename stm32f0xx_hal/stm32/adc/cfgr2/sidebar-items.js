@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["CKMODE_A","ADC clock mode"]],"struct":[["CKMODE_W","Write proxy for field `CKMODE`"]],"type":[["CKMODE_R","Reader of field `CKMODE`"],["R","Reader of register CFGR2"],["W","Writer for register CFGR2"]]});

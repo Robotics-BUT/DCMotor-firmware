@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["stm32f0xx_hal"] = [{"text":"impl&lt;SPI, SCKPIN, MISOPIN, MOSIPIN&gt; Write&lt;u8&gt; for Spi&lt;SPI, SCKPIN, MISOPIN, MOSIPIN, EightBit&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;SPI: Deref&lt;Target = RegisterBlock&gt;,&nbsp;</span>","synthetic":false,"types":[]},{"text":"impl&lt;SPI, SCKPIN, MISOPIN, MOSIPIN&gt; Write&lt;u16&gt; for Spi&lt;SPI, SCKPIN, MISOPIN, MOSIPIN, SixteenBit&gt; <span class=\"where fmt-newline\">where<br>&nbsp;&nbsp;&nbsp;&nbsp;SPI: Deref&lt;Target = RegisterBlock&gt;,&nbsp;</span>","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

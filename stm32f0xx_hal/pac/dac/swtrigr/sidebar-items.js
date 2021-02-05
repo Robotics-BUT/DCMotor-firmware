@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["SWTRIG1_AW","DAC channel1 software trigger"]],"struct":[["SWTRIG1_W","Write proxy for field `SWTRIG1`"],["SWTRIG2_W","Write proxy for field `SWTRIG2`"]],"type":[["SWTRIG2_AW","DAC channel2 software trigger"],["W","Writer for register SWTRIGR"]]});

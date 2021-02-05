@@ -1,0 +1,1 @@
+initSidebarItems({"struct":[["DBG_STANDBY_W","Write proxy for field `DBG_STANDBY`"],["DBG_STOP_W","Write proxy for field `DBG_STOP`"]],"type":[["DBG_STANDBY_R","Reader of field `DBG_STANDBY`"],["DBG_STOP_R","Reader of field `DBG_STOP`"],["R","Reader of register CR"],["W","Writer for register CR"]]});

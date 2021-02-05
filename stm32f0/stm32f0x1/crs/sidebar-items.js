@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["cfgr","configuration register"],["cr","control register"],["icr","interrupt flag clear register"],["isr","interrupt and status register"]],"struct":[["RegisterBlock","Register block"]],"type":[["CFGR","configuration register"],["CR","control register"],["ICR","interrupt flag clear register"],["ISR","interrupt and status register"]]});

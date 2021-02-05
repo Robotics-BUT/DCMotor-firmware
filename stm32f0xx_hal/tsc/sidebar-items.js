@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["ChargeDischargeTime","How many tsc cycles are spent charging / discharging"],["ClockPrescaler",""],["Error",""],["Event",""],["MaxCount",""]],"struct":[["Config",""],["Tsc",""]],"trait":[["TscPin",""]]});

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Error","SPI error"],["Phase","Clock phase"],["Polarity","Clock polarity"]],"struct":[["EightBit","Typestate for 8-bit transfer size"],["Mode","SPI mode"],["SixteenBit","Typestate for 16-bit transfer size"],["Spi","SPI abstraction"]],"trait":[["MisoPin",""],["MosiPin",""],["SckPin",""]]});

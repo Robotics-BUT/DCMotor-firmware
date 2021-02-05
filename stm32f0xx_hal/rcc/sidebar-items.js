@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["HSEBypassMode",""]],"struct":[["CFGR",""],["Clocks","Frozen clock frequencies"],["Rcc","Constrained RCC peripheral"]],"trait":[["RccExt","Extension trait that sets up the `RCC` peripheral"]]});

@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["stm32f0xx_hal"] = [{"text":"impl DelayUs&lt;u32&gt; for Delay","synthetic":false,"types":[]},{"text":"impl DelayUs&lt;u16&gt; for Delay","synthetic":false,"types":[]},{"text":"impl DelayUs&lt;u8&gt; for Delay","synthetic":false,"types":[]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
