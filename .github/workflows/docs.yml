@@ -39,4 +39,4 @@ jobs:
           CLEAN: true # Automatically remove deleted files from the deploy branch
 
       - name: link output directory
-        run: ln -s target/thumbv6m-none-eabi/doc/dcdriver target/thumbv6m-none-eabi/doc/doc
+        run: mv target/thumbv6m-none-eabi/doc/dcdriver target/thumbv6m-none-eabi/doc/doc
