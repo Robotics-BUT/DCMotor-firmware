@@ -25,13 +25,6 @@ jobs:
           override: true
           components: llvm-tools-preview
 
-      - name: Install cargo-binutils
-        uses: actions-rs/install@v0.1
-        with:
-          crate: cargo-binutils
-          version: latest
-          use-tool-cache: true
-
       - name: Install flip-link
         uses: actions-rs/install@v0.1
         with:
@@ -39,7 +32,7 @@ jobs:
           version: latest
           use-tool-cache: true
 
-      - name: Run cargo build --release
+      - name: Run cargo doc
         uses: actions-rs/cargo@v1
         with:
           command: doc
@@ -49,5 +42,5 @@ jobs:
         with:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: gh-pages # The branch the action should deploy to.
-          FOLDER: target/doc # The folder the action should deploy.
+          FOLDER: target/target/thumbv6m-none-eabi/doc/ # The folder the action should deploy.
           CLEAN: true # Automatically remove deleted files from the deploy branch
