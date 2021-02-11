@@ -198,15 +198,18 @@ impl ADC {
     pub fn get_motor_current(&self) -> i16 {
         self.raw_to_current(self.current_value) - self.initial_current.unwrap_or(0)
     }
+
+    const CURRENT_ZERO_REFERENCE: i16 = 2500;
+    const CURRENT_VOLTAGE_DIVIDER_RATIO: u32 = 4;
     //
     fn raw_to_current(&self, raw: u16) -> i16 {
-        let volt = 2500i16 - ((u32::from(self.vdda) * (raw as u32) * 4 / (2u32).pow(12)) as i16);
+        let volt = CURRENT_ZERO_REFERENCE - ((u32::from(self.vdda) * (raw as u32) * 4 / (2u32).pow(12)) as i16);
         ((volt as i32) * 1000 / 180) as i16 - self.initial_current.unwrap_or(0)
     }
 
     pub fn get_averaged_current(&self) -> i16 {
         let number_of_samples = self.current_queue.len();
-        let sum = self.current_queue.iter().fold(0u32, |acc, x| acc + *x);
+        let sum = self.current_queue.iter().copied().fold(0u32, |acc, x| acc + x);
 
         let sum = (sum / number_of_samples as u32);
         self.raw_to_current(sum as u16)
@@ -217,10 +220,11 @@ impl ADC {
         let vtemp110_cal = i32::from(unsafe { ptr::read(VTEMPCAL110) }) * 100;
 
         let mut temperature = i32::from(self.temperature_value) * 100;
-        temperature = (temperature * (i32::from(self.vdda) / i32::from(VDD_CALIB))) - vtemp30_cal;
+        temperature = (temperature * i32::from(self.vdda) / i32::from(VDD_CALIB)) - vtemp30_cal;
         temperature *= (110 - 30) * 100;
         temperature /= vtemp110_cal - vtemp30_cal;
         temperature += 3000;
+        temperature = temperature/100;
         temperature as i16
     }
 }
