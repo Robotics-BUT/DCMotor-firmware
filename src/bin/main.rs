@@ -165,7 +165,7 @@ const APP: () = {
         // enable channel
         channel.cr.modify(|_, w| w.en().enabled());
 
-        controller.set_target(0.0);
+        //controller.set_target(10.0);
 
         init::LateResources {
             led,
@@ -208,12 +208,12 @@ const APP: () = {
         defmt::trace!("Sending NMT heartbeat.");
 
         let failsafe_counter: &mut u8 = cx.resources.failsafe_counter;
-        if *failsafe_counter == 0 {
+        /*if *failsafe_counter == 0 {
             let controller: &mut Controller = cx.resources.controller;
             controller.set_target(0.0);
         } else {
             *failsafe_counter -= 1;
-        }
+        }*/
     }
 
     #[idle(resources = [led, delay, adc])]
@@ -308,6 +308,7 @@ const APP: () = {
         if current.abs() > MAX_ALLOWED_ABS_CURRENT {
             *cx.resources.overcurrent_duration_counter += 1;
             defmt::debug!("stop: {:i16}", current);
+
             if *cx.resources.overcurrent_duration_counter > OVERCURRENT_TIMER_THRESHOLD {
                 defmt::debug!("Emergency overcurrent stop.");
                 controller.set_target(0.0);
@@ -318,14 +319,14 @@ const APP: () = {
         let current_speed: f32 = cx.resources.encoder.calculate_speed();
 
         let action: f32 = controller.calculate_action(current_speed);
-        // defmt::debug!(
-        //     "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}, temp: {:i16}",
-        //     current_speed,
-        //     action,
-        //     current,
-        //     voltage,
-        //     temp
-        // );
+        defmt::debug!(
+             "speed: {:f32}, action: {:f32}, current: {:i16}, voltage: {:u16}, temp: {:i16}",
+             current_speed,
+             action,
+             current,
+             voltage,
+             temp
+         );
         bridge.set_duty(action);
         led2.set_low();
     }
@@ -337,3 +338,5 @@ const APP: () = {
         // adc.interrupt();
     }
 };
+
+
